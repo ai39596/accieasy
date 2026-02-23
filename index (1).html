@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>P2P Drop</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap');
+
+:root {
+–bg: #0a0a0f; –surface: #111118; –border: #1e1e2e;
+–accent: #00ff88; –accent2: #0088ff; –warn: #ffaa00;
+–error: #ff6060; –text: #e8e8f0; –muted: #55556a;
+}
+
+- { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+  background: var(–bg); color: var(–text); font-family: ‘Syne’, sans-serif;
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding: 28px 20px;
+  background-image:
+  radial-gradient(ellipse at 20% 50%, rgba(0,255,136,0.05) 0%, transparent 60%),
+  radial-gradient(ellipse at 80% 20%, rgba(0,136,255,0.05) 0%, transparent 60%);
+  }
+
+/* LOGO */
+.logo { font-size: 1.5rem; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; color: var(–accent); text-shadow: 0 0 40px rgba(0,255,136,0.5); margin-bottom: 6px; }
+.tagline { font-family: ‘JetBrains Mono’, monospace; font-size: 0.68rem; color: var(–muted); letter-spacing: 0.08em; margin-bottom: 32px; text-align: center; }
+
+/* CARD */
+.card { background: var(–surface); border: 1px solid var(–border); border-radius: 20px; width: 100%; max-width: 420px; overflow: hidden; box-shadow: 0 0 80px rgba(0,0,0,0.7), 0 0 160px rgba(0,255,136,0.03); }
+
+/* SECTION HEADER */
+.card-header { padding: 18px 22px 14px; border-bottom: 1px solid var(–border); }
+.card-title { font-size: 0.95rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(–text); margin-bottom: 3px; }
+.card-sub { font-family: ‘JetBrains Mono’, monospace; font-size: 0.65rem; color: var(–muted); }
+
+/* STEPS (sender) */
+.steps { padding: 0; }
+.step-block { padding: 18px 22px; border-bottom: 1px solid var(–border); transition: background 0.3s; }
+.step-block:last-child { border-bottom: none; }
+.step-block.inactive { opacity: 0.4; pointer-events: none; }
+.step-num { font-family: ‘JetBrains Mono’, monospace; font-size: 0.6rem; color: var(–muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; }
+.step-num.done { color: var(–accent); }
+
+/* FILE DROP ZONE */
+.drop-zone {
+border: 2px dashed var(–border); border-radius: 12px;
+padding: 28px 20px; text-align: center; cursor: pointer;
+transition: all 0.25s; position: relative;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+border-color: var(–accent); background: rgba(0,255,136,0.04);
+}
+.drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.drop-icon { font-size: 2.2rem; margin-bottom: 10px; }
+.drop-label { font-size: 0.88rem; font-weight: 700; color: var(–text); margin-bottom: 4px; }
+.drop-hint  { font-family: ‘JetBrains Mono’, monospace; font-size: 0.65rem; color: var(–muted); }
+
+/* SELECTED FILE DISPLAY */
+.file-selected {
+display: none; align-items: center; gap: 14px;
+background: var(–bg); border: 1px solid var(–border);
+border-radius: 10px; padding: 12px 16px; cursor: pointer;
+transition: all 0.2s;
+}
+.file-selected:hover { border-color: var(–accent2); }
+.file-selected.visible { display: flex; }
+.file-sel-icon { font-size: 1.6rem; flex-shrink: 0; }
+.file-sel-info { flex: 1; min-width: 0; }
+.file-sel-name { font-family: ‘JetBrains Mono’, monospace; font-size: 0.8rem; color: var(–text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-sel-size { font-family: ‘JetBrains Mono’, monospace; font-size: 0.62rem; color: var(–muted); margin-top: 2px; }
+.file-change { font-family: ‘JetBrains Mono’, monospace; font-size: 0.62rem; color: var(–muted); flex-shrink: 0; }
+
+/* QR BLOCK */
+.qr-block {
+display: flex; flex-direction: column; align-items: center; gap: 14px;
+opacity: 0.3; transition: opacity 0.4s; pointer-events: none;
+}
+.qr-block.ready { opacity: 1; pointer-events: auto; }
+.qr-frame {
+background: #fff; padding: 14px; border-radius: 14px;
+box-shadow: 0 0 0 1px rgba(0,255,136,0.2), 0 0 40px rgba(0,255,136,0.08);
+transition: box-shadow 0.3s;
+position: relative;
+}
+.qr-frame.active { box-shadow: 0 0 0 2px var(–accent), 0 0 60px rgba(0,255,136,0.2); }
+.qr-frame canvas, .qr-frame img { display: block; }
+
+/* Pulse ring around QR when waiting for receiver */
+.qr-pulse {
+position: absolute; inset: -8px; border-radius: 20px;
+border: 2px solid var(–accent); opacity: 0;
+animation: qrPulse 2s ease-in-out infinite;
+}
+@keyframes qrPulse { 0%{opacity:0;transform:scale(1)} 50%{opacity:0.4} 100%{opacity:0;transform:scale(1.04)} }
+
+.qr-label { font-family: ‘JetBrains Mono’, monospace; font-size: 0.65rem; color: var(–muted); text-align: center; line-height: 1.6; }
+.qr-url   { font-family: ‘JetBrains Mono’, monospace; font-size: 0.6rem; color: rgba(0,255,136,0.4); word-break: break-all; text-align: center; padding: 0 8px; }
+
+/* STATUS PILL */
+.status-pill {
+display: flex; align-items: center; gap: 8px;
+background: var(–bg); border: 1px solid var(–border); border-radius: 999px;
+padding: 7px 14px; font-family: ‘JetBrains Mono’, monospace; font-size: 0.68rem;
+color: var(–muted); transition: all 0.3s;
+}
+.status-pill.connected   { border-color: rgba(0,255,136,0.3); color: var(–accent); }
+.status-pill.sending     { border-color: rgba(0,136,255,0.3); color: var(–accent2); }
+.status-pill.done        { border-color: rgba(0,255,136,0.4); color: var(–accent); background: rgba(0,255,136,0.06); }
+.status-pill.relay       { border-color: rgba(255,170,0,0.3); color: var(–warn); }
+.status-pill.error       { border-color: rgba(255,96,96,0.3); color: var(–error); }
+.sdot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.status-pill.sending .sdot, .status-pill.relay .sdot { animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* PROGRESS BAR */
+.progress-section { padding: 0 22px 18px; display: none; }
+.progress-section.visible { display: block; }
+.progress-track { height: 4px; background: var(–border); border-radius: 2px; overflow: hidden; margin-bottom: 8px; }
+.progress-fill  { height: 100%; width: 0%; background: var(–accent2); border-radius: 2px; transition: width 0.15s linear; }
+.progress-label { font-family: ‘JetBrains Mono’, monospace; font-size: 0.65rem; color: var(–muted); display: flex; justify-content: space-between; }
+
+/* ── RECEIVER SIDE ─────────────────────────────── */
+.recv-card { text-align: center; padding: 32px 28px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+
+.recv-icon { font-size: 3.5rem; animation: float 3s ease-in-out infinite; }
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+
+.recv-title { font-size: 1.1rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.recv-title.ready   { color: var(–accent); }
+.recv-title.waiting { color: var(–accent2); }
+.recv-title.error   { color: var(–error); }
+
+.recv-sub { font-family: ‘JetBrains Mono’, monospace; font-size: 0.72rem; color: var(–muted); line-height: 1.7; }
+
+.file-card {
+background: var(–bg); border: 1px solid var(–border); border-radius: 12px;
+padding: 16px 18px; width: 100%; display: flex; align-items: center; gap: 14px;
+}
+.file-card-icon { font-size: 2rem; flex-shrink: 0; }
+.file-card-info { flex: 1; min-width: 0; text-align: left; }
+.file-card-name { font-family: ‘JetBrains Mono’, monospace; font-size: 0.82rem; color: var(–text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
+.file-card-size { font-family: ‘JetBrains Mono’, monospace; font-size: 0.62rem; color: var(–muted); }
+
+/* Download button */
+.dl-btn {
+background: var(–accent); border: none; border-radius: 12px; color: #000;
+font-family: ‘Syne’, sans-serif; font-weight: 800; font-size: 0.9rem;
+padding: 14px 28px; cursor: pointer; transition: all 0.2s; width: 100%;
+letter-spacing: 0.05em; display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.dl-btn:hover { background: #00ffaa; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,255,136,0.3); }
+.dl-btn:disabled { background: var(–muted); cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* Recv progress */
+.recv-progress { width: 100%; }
+.recv-track { height: 6px; background: var(–border); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+.recv-fill  { height: 100%; width: 0%; background: linear-gradient(90deg, var(–accent2), var(–accent)); border-radius: 3px; transition: width 0.15s linear; }
+.recv-pct   { font-family: ‘JetBrains Mono’, monospace; font-size: 0.72rem; color: var(–muted); text-align: center; }
+
+/* Spinner */
+.spinner {
+width: 36px; height: 36px; border: 3px solid var(–border);
+border-top-color: var(–accent2); border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to{transform:rotate(360deg)} }
+</style>
+
+</head>
+<body>
+
+<div class="logo">⬡ P2P Drop</div>
+<p class="tagline">// scan · connect · receive · no server</p>
+
+<!-- CONTENT injected here by JS based on URL params -->
+
+<div id="app"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════
+const CHUNK_SIZE       = 16 * 1024;
+const RELAY_CHUNK_SIZE = 6  * 1024;
+const WEBRTC_TIMEOUT   = 12000;
+const RELAY_SENTINEL   = '__APP_RELAY__';
+
+// ═══════════════════════════════════════════════════════════
+// URL PARAMS — determine role
+// ?peer=ID&file=name&size=bytes  → RECEIVER mode
+// (no params)                    → SENDER mode
+// ═══════════════════════════════════════════════════════════
+const params       = new URLSearchParams(location.search);
+const RECV_PEER_ID = params.get('peer');
+const RECV_FILE    = params.get('file');
+const RECV_SIZE    = parseInt(params.get('size') || '0');
+const IS_RECEIVER  = !!RECV_PEER_ID;
+
+// ═══════════════════════════════════════════════════════════
+// SHARED STATE
+// ═══════════════════════════════════════════════════════════
+let peer = null, conn = null, myId = null, remotePeerId = null;
+let transport = null;
+let relayAckPending = false;
+let webrtcTimer = null, relayAckTimer = null;
+
+// Sender state
+let pendingFile   = null;  // File object waiting to be sent
+let transferDone  = false;
+
+// Receiver state
+let incomingFile  = null;  // reassembly state
+let downloadUrl   = null;
+
+// ═══════════════════════════════════════════════════════════
+// BOOT — render correct UI then init
+// ═══════════════════════════════════════════════════════════
+if (IS_RECEIVER) {
+  renderReceiver();
+} else {
+  renderSender();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ════════════ SENDER UI ════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+function renderSender() {
+  document.getElementById('app').innerHTML = `
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Send a File</div>
+      <div class="card-sub">Other device scans QR · file transfers directly</div>
+    </div>
+
+    <div class="steps">
+
+      <!-- STEP 1: Pick file -->
+      <div class="step-block" id="step1">
+        <div class="step-num" id="step1-num">Step 1 — Choose file</div>
+
+        <!-- Drop zone (shown before selection) -->
+        <div class="drop-zone" id="drop-zone">
+          <input type="file" id="file-input" onchange="onFileSelected(this.files[0])" />
+          <div class="drop-icon">📂</div>
+          <div class="drop-label">Tap to choose a file</div>
+          <div class="drop-hint">Any type · any size</div>
+        </div>
+
+        <!-- Selected file card (shown after selection) -->
+        <div class="file-selected" id="file-selected" onclick="document.getElementById('file-input').click()">
+          <div class="file-sel-icon" id="file-sel-icon">📄</div>
+          <div class="file-sel-info">
+            <div class="file-sel-name" id="file-sel-name"></div>
+            <div class="file-sel-size" id="file-sel-size"></div>
+          </div>
+          <div class="file-change">change ›</div>
+        </div>
+      </div>
+
+      <!-- STEP 2: QR code -->
+      <div class="step-block" id="step2">
+        <div class="step-num" id="step2-num">Step 2 — Show QR code to other device</div>
+        <div class="qr-block" id="qr-block">
+          <div class="qr-frame" id="qr-frame">
+            <div id="qr-canvas"></div>
+            <div class="qr-pulse"></div>
+          </div>
+          <div class="status-pill" id="status-pill">
+            <div class="sdot"></div>
+            <span id="status-text">Generating ID...</span>
+          </div>
+          <div class="qr-label">Other device scans this with<br/>their camera app — no app install needed</div>
+          <div class="qr-url" id="qr-url"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Progress (shown during transfer) -->
+    <div class="progress-section" id="progress-section">
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="progress-label">
+        <span id="progress-pct">0%</span>
+        <span id="progress-transferred">0 B</span>
+      </div>
+    </div>
+
+  </div>`;
+
+  // Drag-and-drop on drop zone
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) onFileSelected(f);
+  });
+
+  initPeer();
+}
+
+// File selected callback
+function onFileSelected(file) {
+  if (!file) return;
+  pendingFile = file;
+
+  // Show selected file card
+  document.getElementById('drop-zone').style.display = 'none';
+  document.getElementById('file-selected').classList.add('visible');
+  document.getElementById('file-sel-icon').textContent = fileEmoji(file.name);
+  document.getElementById('file-sel-name').textContent = file.name;
+  document.getElementById('file-sel-size').textContent = fmtSize(file.size);
+  document.getElementById('step1-num').classList.add('done');
+  document.getElementById('step1-num').textContent = 'Step 1 ✓ — ' + file.name;
+
+  // Regenerate QR with file metadata in URL
+  if (myId) buildQR();
+}
+
+// Build the shareable URL and render QR
+function buildQR() {
+  if (!myId) return;
+
+  // Build URL with peer ID + file metadata as query params
+  // This page IS the receiver — so the URL points to itself
+  const base = location.href.split('?')[0];
+  const url  = base + '?peer=' + encodeURIComponent(myId)
+                    + (pendingFile ? '&file=' + encodeURIComponent(pendingFile.name) + '&size=' + pendingFile.size : '');
+
+  document.getElementById('qr-canvas').innerHTML = '';
+  new QRCode(document.getElementById('qr-canvas'), {
+    text: url, width: 200, height: 200,
+    colorDark: '#000000', colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  });
+
+  document.getElementById('qr-url').textContent = url;
+  document.getElementById('qr-block').classList.add('ready');
+  document.getElementById('qr-frame').classList.add('active');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ════════════ RECEIVER UI ══════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+function renderReceiver() {
+  document.getElementById('app').innerHTML = `
+  <div class="card">
+    <div class="recv-card" id="recv-card">
+
+      <div class="spinner" id="recv-spinner"></div>
+      <div class="recv-icon" id="recv-icon" style="display:none">${fileEmoji(RECV_FILE || '')}</div>
+
+      <div class="recv-title waiting" id="recv-title">Connecting to sender...</div>
+      <div class="recv-sub" id="recv-sub">
+        ${RECV_FILE
+          ? 'Getting ready to receive <strong style="color:var(--text)">' + esc(RECV_FILE) + '</strong>' + (RECV_SIZE ? ' (' + fmtSize(RECV_SIZE) + ')' : '')
+          : 'Waiting for file from sender...'}
+      </div>
+
+      <!-- File card — shown when transfer starts -->
+      <div class="file-card" id="file-card" style="display:none">
+        <div class="file-card-icon" id="file-card-icon">${fileEmoji(RECV_FILE || '')}</div>
+        <div class="file-card-info">
+          <div class="file-card-name" id="file-card-name">${esc(RECV_FILE || 'Incoming file')}</div>
+          <div class="file-card-size" id="file-card-size">${RECV_SIZE ? fmtSize(RECV_SIZE) : ''}</div>
+        </div>
+      </div>
+
+      <!-- Progress bar — shown during transfer -->
+      <div class="recv-progress" id="recv-progress" style="display:none">
+        <div class="recv-track"><div class="recv-fill" id="recv-fill"></div></div>
+        <div class="recv-pct" id="recv-pct">0%</div>
+      </div>
+
+      <!-- Download button — shown when complete -->
+      <button class="dl-btn" id="dl-btn" style="display:none" onclick="triggerDownload()">
+        ↓ Save File
+      </button>
+
+    </div>
+  </div>`;
+
+  initPeer();
+}
+
+function setReceiverState(state, subText) {
+  const title   = document.getElementById('recv-title');
+  const sub     = document.getElementById('recv-sub');
+  const spinner = document.getElementById('recv-spinner');
+  const icon    = document.getElementById('recv-icon');
+
+  if (subText) sub.innerHTML = subText;
+
+  if (state === 'connecting') {
+    spinner.style.display = 'block'; icon.style.display = 'none';
+    title.className = 'recv-title waiting'; title.textContent = 'Connecting to sender...';
+  } else if (state === 'connected') {
+    spinner.style.display = 'none'; icon.style.display = 'block';
+    title.className = 'recv-title waiting'; title.textContent = 'Connected — waiting for file...';
+  } else if (state === 'receiving') {
+    spinner.style.display = 'none'; icon.style.display = 'block';
+    title.className = 'recv-title waiting'; title.textContent = 'Receiving...';
+    document.getElementById('file-card').style.display = 'flex';
+    document.getElementById('recv-progress').style.display = 'block';
+  } else if (state === 'done') {
+    title.className = 'recv-title ready'; title.textContent = 'Ready to save!';
+    document.getElementById('recv-progress').style.display = 'none';
+    document.getElementById('dl-btn').style.display = 'block';
+    document.getElementById('file-card').style.display = 'flex';
+    icon.style.display = 'block'; spinner.style.display = 'none';
+  } else if (state === 'error') {
+    spinner.style.display = 'none';
+    title.className = 'recv-title error'; title.textContent = 'Connection Failed';
+  }
+}
+
+function updateRecvProgress(pct, transferred, total) {
+  document.getElementById('recv-fill').style.width = pct + '%';
+  document.getElementById('recv-pct').textContent  = pct + '% — ' + fmtSize(transferred) + ' of ' + fmtSize(total);
+}
+
+function triggerDownload() {
+  if (!downloadUrl || !incomingFile) return;
+  const a = document.createElement('a');
+  a.href = downloadUrl; a.download = incomingFile.name; a.click();
+}
+
+// ═══════════════════════════════════════════════════════════
+// PEERJS INIT (shared by both roles)
+// ═══════════════════════════════════════════════════════════
+function initPeer() {
+  peer = new Peer(undefined, {
+    host: '0.peerjs.com', port: 443, secure: true, debug: 0,
+    config: { iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+    ]}
+  });
+
+  peer.on('open', (id) => {
+    myId = id;
+
+    if (IS_RECEIVER) {
+      // Receiver connects to sender immediately
+      remotePeerId = RECV_PEER_ID;
+      setReceiverState('connecting');
+      initiateConnection(RECV_PEER_ID);
+    } else {
+      // Sender: build QR (will regenerate if file already selected)
+      buildQR();
+      setSenderStatus('idle', 'Waiting for receiver to scan...');
+      interceptRelayMessages();
+    }
+  });
+
+  // Sender listens for incoming connections from receiver
+  peer.on('connection', (c) => {
+    if (IS_RECEIVER) return; // receiver never accepts connections
+    remotePeerId = c.peer;
+    conn = c;
+    setupConnectionHandlers(c, false);
+  });
+
+  peer.on('error', (err) => {
+    clearWebRTCTimer();
+    if (IS_RECEIVER) {
+      setReceiverState('error', 'Could not reach sender. They may have closed the page.');
+    } else {
+      setSenderStatus('error', 'Connection error: ' + err.type);
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// RECEIVER: initiate connection to sender
+// ═══════════════════════════════════════════════════════════
+function initiateConnection(peerId) {
+  interceptRelayMessages();
+  conn = peer.connect(peerId, { reliable: true });
+  setupConnectionHandlers(conn, true);
+
+  webrtcTimer = setTimeout(() => {
+    if (transport !== 'webrtc') {
+      initiateRelayHandshake();
+    }
+  }, WEBRTC_TIMEOUT);
+}
+
+// ═══════════════════════════════════════════════════════════
+// CONNECTION HANDLERS (shared)
+// ═══════════════════════════════════════════════════════════
+function setupConnectionHandlers(c, isInitiator) {
+  c.on('open', () => {
+    if (transport === 'relay') return;
+    clearWebRTCTimer();
+    transport = 'webrtc';
+
+    if (IS_RECEIVER) {
+      setReceiverState('connected');
+    } else {
+      setSenderStatus('connected', 'Receiver connected — sending file...');
+      document.getElementById('qr-frame')?.classList.remove('active');
+      autoSendFile();
+    }
+  });
+
+  c.on('data', (data) => {
+    if (transport === 'webrtc') handleData(data);
+  });
+
+  c.on('close', () => {
+    if (!transferDone) {
+      if (IS_RECEIVER) setReceiverState('error', 'Sender disconnected before transfer completed.');
+      else setSenderStatus('error', 'Receiver disconnected');
+    }
+  });
+
+  // ICE failure → relay
+  const iv = setInterval(() => {
+    if (c.peerConnection) {
+      c.peerConnection.oniceconnectionstatechange = () => {
+        const s = c.peerConnection.iceConnectionState;
+        if (s === 'failed' && transport !== 'webrtc') {
+          clearInterval(iv); clearWebRTCTimer();
+          initiateRelayHandshake();
+        }
+      };
+      clearInterval(iv);
+    }
+  }, 200);
+  setTimeout(() => clearInterval(iv), 20000);
+}
+
+// ═══════════════════════════════════════════════════════════
+// AUTO SEND — sender pushes file immediately on connection
+// ═══════════════════════════════════════════════════════════
+function autoSendFile() {
+  if (!pendingFile) {
+    setSenderStatus('connected', 'Receiver connected — waiting for you to pick a file...');
+    return;
+  }
+  startSend(pendingFile);
+}
+
+function startSend(file) {
+  const cs = transport === 'relay' ? RELAY_CHUNK_SIZE : CHUNK_SIZE;
+  const totalChunks = Math.ceil(file.size / cs);
+  let bytesSent = 0;
+
+  setSenderStatus('sending', 'Sending ' + file.name + '...');
+  document.getElementById('progress-section').classList.add('visible');
+
+  transportSend({ type: 'file-meta', name: file.name, size: file.size, mimeType: file.type, totalChunks });
+
+  let idx = 0;
+  const reader = new FileReader();
+
+  function sendNext() {
+    const start = idx * cs;
+    reader.readAsArrayBuffer(file.slice(start, Math.min(start + cs, file.size)));
+  }
+
+  reader.onload = (e) => {
+    const data = transport === 'relay'
+      ? { encoded: true,  bytes: bufToB64(e.target.result) }
+      : { encoded: false, bytes: e.target.result };
+
+    transportSend({ type: 'file-chunk', index: idx, data });
+    idx++;
+    bytesSent += e.target.result.byteLength;
+
+    const pct = Math.round((idx / totalChunks) * 100);
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-pct').textContent = pct + '%';
+    document.getElementById('progress-transferred').textContent = fmtSize(bytesSent) + ' / ' + fmtSize(file.size);
+
+    if (idx < totalChunks) {
+      setTimeout(sendNext, transport === 'relay' ? 15 : 0);
+    } else {
+      transportSend({ type: 'file-end' });
+      transferDone = true;
+      setSenderStatus('done', 'Transfer complete! ' + file.name + ' sent successfully.');
+    }
+  };
+
+  sendNext();
+}
+
+// ═══════════════════════════════════════════════════════════
+// INCOMING DATA HANDLER (receiver)
+// ═══════════════════════════════════════════════════════════
+function handleData(data) {
+  if (!data?.type) return;
+
+  switch (data.type) {
+    case 'file-meta':
+      incomingFile = {
+        name: data.name, size: data.size, mimeType: data.mimeType,
+        totalChunks: data.totalChunks, chunks: new Array(data.totalChunks), received: 0
+      };
+      setReceiverState('receiving');
+      document.getElementById('file-card-name').textContent = data.name;
+      document.getElementById('file-card-size').textContent = fmtSize(data.size);
+      document.getElementById('file-card-icon').textContent = fileEmoji(data.name);
+      break;
+
+    case 'file-chunk':
+      if (!incomingFile) break;
+      incomingFile.chunks[data.index] = data.data.encoded
+        ? b64ToBuf(data.data.bytes)
+        : data.data.bytes;
+      incomingFile.received++;
+      const pct = Math.round((incomingFile.received / incomingFile.totalChunks) * 100);
+      updateRecvProgress(pct, incomingFile.received * (incomingFile.size / incomingFile.totalChunks), incomingFile.size);
+      break;
+
+    case 'file-end':
+      if (!incomingFile) break;
+      const blob = new Blob(incomingFile.chunks, { type: incomingFile.mimeType || 'application/octet-stream' });
+      downloadUrl = URL.createObjectURL(blob);
+      transferDone = true;
+      setReceiverState('done', 'Your file is ready!');
+      updateRecvProgress(100, incomingFile.size, incomingFile.size);
+      break;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// RELAY (same piggybacked CANDIDATE approach)
+// ═══════════════════════════════════════════════════════════
+function interceptRelayMessages() {
+  const ws = peer?.socket?._socket;
+  if (!ws) return;
+  const orig = ws.onmessage;
+  ws.onmessage = function(event) {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'CANDIDATE' && msg.payload?.candidate?.candidate?.startsWith(RELAY_SENTINEL)) {
+        const json = msg.payload.candidate.candidate.slice(RELAY_SENTINEL.length);
+        handleRelayPacket(JSON.parse(json), msg.src);
+        return;
+      }
+    } catch {}
+    if (orig) orig.call(ws, event);
+  };
+}
+
+function relaySend(packet) {
+  if (!peer || !remotePeerId) return false;
+  try {
+    peer.socket.send({
+      type: 'CANDIDATE', dst: remotePeerId,
+      payload: {
+        candidate: { candidate: RELAY_SENTINEL + JSON.stringify(packet), sdpMid: '0', sdpMLineIndex: 0 },
+        type: 'data', label: 'relay', connectionId: 'relay-channel'
+      }
+    });
+    return true;
+  } catch { return false; }
+}
+
+function handleRelayPacket(packet, fromId) {
+  if (!packet?.type) return;
+
+  if (packet.type === 'relay-hello') {
+    remotePeerId = fromId;
+    relaySend({ type: 'relay-ack', from: myId });
+    if (transport !== 'webrtc' && transport !== 'relay') activateRelay();
+    return;
+  }
+  if (packet.type === 'relay-ack') {
+    if (relayAckPending) {
+      clearTimeout(relayAckTimer); relayAckPending = false;
+      activateRelay();
+    }
+    return;
+  }
+  if (transport === 'relay' && packet.type === 'relay-data') {
+    handleData(packet.data);
+  }
+}
+
+function initiateRelayHandshake() {
+  if (transport === 'webrtc' || transport === 'relay' || relayAckPending) return;
+  relayAckPending = true;
+
+  if (IS_RECEIVER) setReceiverState('connecting', 'Direct connection blocked — trying relay...');
+  else setSenderStatus('connecting', 'Trying relay...');
+
+  if (!relaySend({ type: 'relay-hello', from: myId })) {
+    if (IS_RECEIVER) setReceiverState('error', 'Could not reach sender. Network is blocked.');
+    else setSenderStatus('error', 'All connection methods failed');
+    return;
+  }
+
+  relayAckTimer = setTimeout(() => {
+    if (transport !== 'relay') {
+      relayAckPending = false;
+      if (IS_RECEIVER) setReceiverState('error', 'Relay handshake timed out. Sender may have closed the page.');
+      else setSenderStatus('error', 'Relay handshake timed out');
+    }
+  }, 10000);
+}
+
+function activateRelay() {
+  if (transport === 'relay') return;
+  transport = 'relay';
+
+  if (IS_RECEIVER) {
+    setReceiverState('connected', 'Connected via relay — waiting for file...');
+    // Relay active — sender will now push the file
+  } else {
+    setSenderStatus('relay', 'Receiver connected via relay — sending...');
+    document.getElementById('qr-frame')?.classList.remove('active');
+    autoSendFile();
+  }
+}
+
+function transportSend(data) {
+  if (transport === 'webrtc' && conn?.open) { conn.send(data); return true; }
+  if (transport === 'relay') return relaySend({ type: 'relay-data', data });
+  return false;
+}
+
+function clearWebRTCTimer() { if (webrtcTimer) { clearTimeout(webrtcTimer); webrtcTimer = null; } }
+
+// ═══════════════════════════════════════════════════════════
+// SENDER STATUS HELPER
+// ═══════════════════════════════════════════════════════════
+function setSenderStatus(state, text) {
+  const pill = document.getElementById('status-pill');
+  const stxt = document.getElementById('status-text');
+  if (!pill || !stxt) return;
+  stxt.textContent = text;
+  pill.className = 'status-pill ' + state;
+}
+
+// ═══════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════
+function fileEmoji(name) {
+  const e = (name || '').split('.').pop().toLowerCase();
+  return {pdf:'📕',doc:'📝',docx:'📝',xls:'📊',xlsx:'📊',ppt:'📋',pptx:'📋',
+    zip:'🗜️',rar:'🗜️',gz:'🗜️',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',webp:'🖼️',
+    mp4:'🎬',mov:'🎬',avi:'🎬',mp3:'🎵',wav:'🎵',ogg:'🎵',
+    txt:'📃',md:'📃',json:'📃',csv:'📃',js:'💻',py:'💻',html:'💻'}[e] || '📄';
+}
+function fmtSize(b) {
+  if (!b) return '';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+function bufToB64(b) { const u=new Uint8Array(b); let s=''; for(let i=0;i<u.length;i++) s+=String.fromCharCode(u[i]); return btoa(s); }
+function b64ToBuf(s) { const b=atob(s),u=new Uint8Array(b.length); for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u.buffer; }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
+
+</body>
+</html>
