@@ -4,6 +4,52 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>P2P Messenger</title>
+<script>
+/* ── WebSocket interceptor — must run BEFORE PeerJS loads ──────────────────
+ * Patches window.WebSocket so we can:
+ *   1. Expose the live PeerJS WS as window.__getPeerWs()
+ *   2. Intercept CANDIDATE messages whose candidate starts with __APP_RELAY__
+ *      (Stage 3 signaling-relay protocol) before PeerJS sees them.         */
+(function () {
+  var _Orig = window.WebSocket;
+  var _peerWs = null;
+  window.__getPeerWs = function () { return _peerWs; };
+  window.__relayMessageHandler = null;
+
+  function PatchedWS(url, protocols) {
+    var ws = (protocols !== undefined) ? new _Orig(url, protocols) : new _Orig(url);
+    if (url && url.indexOf('peerjs.com') !== -1) _peerWs = ws;
+    /* Capture-phase listener runs before PeerJS's own onmessage handler.   */
+    ws.addEventListener('message', function (evt) {
+      try {
+        var msg = JSON.parse(evt.data);
+        if (
+          msg.type === 'CANDIDATE' &&
+          msg.payload &&
+          typeof msg.payload.candidate === 'string' &&
+          msg.payload.candidate.indexOf('__APP_RELAY__') === 0
+        ) {
+          /* Relay message — consume it; do not forward to PeerJS.          */
+          if (window.__relayMessageHandler) {
+            var data = JSON.parse(
+              msg.payload.candidate.slice('__APP_RELAY__'.length)
+            );
+            window.__relayMessageHandler(data, msg.src);
+          }
+          evt.stopImmediatePropagation();
+        }
+      } catch (e) {}
+    }, true /* capture */);
+    return ws;
+  }
+  PatchedWS.CONNECTING = 0;
+  PatchedWS.OPEN       = 1;
+  PatchedWS.CLOSING    = 2;
+  PatchedWS.CLOSED     = 3;
+  PatchedWS.prototype  = _Orig.prototype;
+  window.WebSocket     = PatchedWS;
+}());
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap');
@@ -712,12 +758,28 @@
     triggerDownload(_recvDownloadUrl, _recvFileName);
   }
 
+  // ── TURN CONFIGURATION (Stage 4) ──────────────────────────
+  // Sign up free at dashboard.metered.ca or xirsys.com, then fill in:
+  const TURN_URLS = 'turn:your-turn-server.com:3478';
+  const TURN_USER = 'username';
+  const TURN_CRED = 'credential';
+  const TURN_ENABLED = false; // set true once credentials are configured
+
   // ── STATE ──────────────────────────────────────────────────
   let peer, conn;
   let myId = null;
-  let connectionTimer = null;
   let iceFailedDetected = false;
-  const CONNECTION_TIMEOUT_MS = 15000;
+
+  // Stage tracking
+  let currentStage = 1;
+  let stageTimer   = null;
+  const ICE_TIMEOUT_MS   = 8000;
+  const RELAY_TIMEOUT_MS = 20000;
+
+  // Relay (Stage 3) state
+  let relayMode    = false;
+  let relayReady   = false;
+  let relayPeerId  = null;
 
   let incomingFile = null;
   const CHUNK_SIZE = 16 * 1024;
@@ -735,12 +797,12 @@
   const natBanner  = document.getElementById('nat-banner');
   const bannerGap  = document.getElementById('banner-gap');
 
-  // ── NAT BANNER ─────────────────────────────────────────────
+  // ── NAT BANNER (messenger mode only) ───────────────────────
   function showNatBanner() {
     if (iceFailedDetected) return;
     iceFailedDetected = true;
     if (RECEIVE_MODE) {
-      recvShowError('החיבור נחסם על ידי רשת או חומת אש.\nוודא ששני המכשירים מחוברים לאותה רשת WiFi או נסה שנית.');
+      activateStage3();   // receive mode: try relay instead of showing error
       return;
     }
     natBanner.classList.add('visible');
@@ -761,103 +823,225 @@
     dot.style.boxShadow = '';
   }
 
-  // ── TIMEOUT ────────────────────────────────────────────────
-  function startConnectionTimer() {
-    clearConnectionTimer();
-    connectionTimer = setTimeout(() => {
-      if (conn && !conn.open) {
-        if (RECEIVE_MODE) {
-          recvShowError('פג הזמן הקצוב לחיבור (15 שניות).\nוודא שהאפליקציה של השולח פתוחה ומציגה את קוד ה-QR.');
-        } else {
-          showNatBanner();
-          addSystemMessage('✗ Timed out after 15s — likely NAT or firewall block');
-        }
-      }
-    }, CONNECTION_TIMEOUT_MS);
+  // ── STAGE TIMER ────────────────────────────────────────────
+  function clearStageTimer() {
+    if (stageTimer) { clearTimeout(stageTimer); stageTimer = null; }
   }
 
-  function clearConnectionTimer() {
-    if (connectionTimer) { clearTimeout(connectionTimer); connectionTimer = null; }
+  function updateStageStatus() {
+    const labels = ['', 'ישיר', 'STUN', 'ממסר', 'TURN'];
+    if (!RECEIVE_MODE) return;
+    const msgs = [
+      '', 'מנסה התחברות ישירה...', 'מנסה STUN...',
+      'ממסר דרך שרת האותות...', 'ממסר דרך שרת TURN...'
+    ];
+    recvSetStatus(`שלב ${currentStage}/4 · ${labels[currentStage]} · ${msgs[currentStage]}`, 'connecting');
+  }
+
+  // ── STAGE 3: SIGNALING RELAY ────────────────────────────────
+  function relaySend(data) {
+    const ws = window.__getPeerWs();
+    if (!ws || ws.readyState !== 1) return;
+    ws.send(JSON.stringify({
+      type: 'CANDIDATE',
+      payload: {
+        candidate:     '__APP_RELAY__' + JSON.stringify(data),
+        sdpMLineIndex: 0,
+        sdpMid:        '0'
+      },
+      dst: relayPeerId
+    }));
+  }
+
+  function onRelayOpen(srcId) {
+    clearStageTimer();
+    if (RECEIVE_MODE) {
+      recvSetStatus('מחובר דרך ממסר · ממתין לקובץ...', 'connected');
+    } else {
+      dot.className = 'dot online';
+      statusText.textContent = 'Connected via relay to ' + srcId.substring(0, 8) + '...';
+      msgInput.disabled = false;
+      sendBtn.disabled = false;
+      clearEmptyState();
+      addSystemMessage('✓ Stage 3 relay connection established');
+    }
+  }
+
+  window.__relayMessageHandler = function (data, srcId) {
+    if (!relayPeerId) relayPeerId = srcId;
+    switch (data.type) {
+      case 'relay-hello':
+        relayReady = true;
+        relaySend({ type: 'relay-ack' });
+        onRelayOpen(srcId);
+        break;
+      case 'relay-ack':
+        relayReady = true;
+        onRelayOpen(srcId);
+        break;
+      case 'file-meta':
+        handleFileStart(data.name, data.size, data.mimeType, data.totalChunks);
+        break;
+      case 'file-chunk':
+        handleFileChunk(data.index, null, data.data);
+        break;
+      case 'file-end':
+        handleFileEnd();
+        break;
+    }
+  };
+
+  function activateStage3() {
+    if (relayMode) return;
+    clearStageTimer();
+    currentStage = 3;
+    relayMode  = true;
+    relayReady = false;
+    relayPeerId = RECEIVE_MODE ? _autoConnectPeer : (conn ? conn.peer : null);
+    updateStageStatus();
+    relaySend({ type: 'relay-hello' });
+    // Stage 4 fallback if relay doesn't connect in time
+    if (TURN_ENABLED) {
+      stageTimer = setTimeout(activateStage4, RELAY_TIMEOUT_MS);
+    } else {
+      stageTimer = setTimeout(() => {
+        if (!relayReady) {
+          if (RECEIVE_MODE) {
+            recvShowError('כל שלבי ההתחברות נכשלו.\nוודא שהאפליקציה פתוחה ומחוברת לאינטרנט, ונסה שנית.');
+          } else {
+            showNatBanner();
+            addSystemMessage('✗ All connection stages failed');
+          }
+        }
+      }, RELAY_TIMEOUT_MS);
+    }
+  }
+
+  // ── STAGE 4: TURN RELAY ─────────────────────────────────────
+  function activateStage4() {
+    clearStageTimer();
+    currentStage = 4;
+    updateStageStatus();
+    const senderPeerId = RECEIVE_MODE ? _autoConnectPeer
+                       : (conn ? conn.peer : document.getElementById('peer-id-input').value.trim());
+    relayMode  = false;
+    relayReady = false;
+    if (peer) { peer.destroy(); peer = null; }
+    initPeerWithConfig(
+      [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: TURN_URLS, username: TURN_USER, credential: TURN_CRED }
+      ],
+      () => {
+        relayPeerId = senderPeerId;
+        document.getElementById('peer-id-input').value = senderPeerId;
+        doConnect(senderPeerId);
+      }
+    );
   }
 
   // ── PEERJS INIT ────────────────────────────────────────────
-  peer = new Peer(undefined, {
-    host: '0.peerjs.com',
-    port: 443,
-    secure: true,
-    debug: 0,
-    config: {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' }
-      ]
-    }
-  });
+  function initPeerWithConfig(iceServers, onReadyCallback) {
+    peer = new Peer(undefined, {
+      host: '0.peerjs.com',
+      port: 443,
+      secure: true,
+      debug: 0,
+      config: { iceServers }
+    });
 
-  peer.on('open', (id) => {
-    myId = id;
-    if (!RECEIVE_MODE) {
-      myIdEl.textContent = id;
-      dot.className = 'dot online';
-      statusText.textContent = 'Ready — waiting for connection';
-      connectBtn.disabled = false;
-    } else {
-      // Auto-connect to the sender
-      recvSetStatus('מתחבר לשולח...', 'connecting');
-      document.getElementById('peer-id-input').value = _autoConnectPeer;
-      setTimeout(() => connectToPeer(), 600);
-    }
-  });
+    peer.on('open', (id) => {
+      myId = id;
+      if (!RECEIVE_MODE) {
+        myIdEl.textContent = id;
+        dot.className = 'dot online';
+        statusText.textContent = 'Ready — waiting for connection';
+        connectBtn.disabled = false;
+      }
+      if (onReadyCallback) onReadyCallback(id);
+    });
 
-  peer.on('error', (err) => {
-    clearConnectionTimer();
-    if (RECEIVE_MODE) {
-      recvShowError('שגיאת חיבור: ' + err.type + '\nוודא שהאפליקציה של השולח עדיין פתוחה ומציגה את קוד ה-QR.');
-      return;
-    }
-    dot.className = 'dot';
-    if (err.type === 'peer-unavailable') {
-      statusText.textContent = 'Peer not found — check the ID and try again';
-      connectBtn.disabled = false;
-      addSystemMessage('✗ Peer ID not found — make sure the other device has the app open');
-    } else if (err.type === 'network' || err.type === 'server-error') {
-      showNatBanner();
-    } else {
-      statusText.textContent = 'Error: ' + err.type;
-    }
-  });
+    peer.on('error', (err) => {
+      clearStageTimer();
+      if (RECEIVE_MODE) {
+        if (err.type === 'peer-unavailable' && currentStage < 3) {
+          activateStage3();
+        } else {
+          recvShowError('שגיאת חיבור: ' + err.type + '\nוודא שהאפליקציה של השולח עדיין פתוחה ומציגה את קוד ה-QR.');
+        }
+        return;
+      }
+      dot.className = 'dot';
+      if (err.type === 'peer-unavailable') {
+        statusText.textContent = 'Peer not found — check the ID and try again';
+        connectBtn.disabled = false;
+        addSystemMessage('✗ Peer ID not found — make sure the other device has the app open');
+      } else if (err.type === 'network' || err.type === 'server-error') {
+        showNatBanner();
+      } else {
+        statusText.textContent = 'Error: ' + err.type;
+      }
+    });
 
-  peer.on('connection', (c) => {
-    hideNatBanner();
-    conn = c;
-    setupConnection();
-    startConnectionTimer();
-    if (!RECEIVE_MODE) addSystemMessage('Incoming connection from ' + conn.peer.substring(0, 8) + '...');
-  });
+    peer.on('connection', (c) => {
+      hideNatBanner();
+      conn = c;
+      setupConnection();
+      if (!RECEIVE_MODE) addSystemMessage('Incoming connection from ' + conn.peer.substring(0, 8) + '...');
+    });
+  }
+
+  // Stage 1+2: STUN (WebRTC tries direct host candidates first automatically)
+  initPeerWithConfig(
+    [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' }
+    ],
+    () => {
+      if (RECEIVE_MODE) {
+        currentStage = 2;
+        relayPeerId  = _autoConnectPeer;
+        updateStageStatus();
+        document.getElementById('peer-id-input').value = _autoConnectPeer;
+        setTimeout(() => doConnect(_autoConnectPeer), 600);
+      }
+    }
+  );
 
   // ── CONNECT ────────────────────────────────────────────────
+  function doConnect(peerId) {
+    if (!peerId || !peer || peer.destroyed) return;
+    conn = peer.connect(peerId, { reliable: true });
+    setupConnection();
+    // ICE timeout → Stage 3 relay
+    clearStageTimer();
+    stageTimer = setTimeout(() => {
+      if (conn && !conn.open && !relayMode) activateStage3();
+    }, ICE_TIMEOUT_MS);
+    tryAttachEarlyIceWatcher();
+  }
+
   function connectToPeer() {
     const peerId = document.getElementById('peer-id-input').value.trim();
     if (!peerId) return;
     hideNatBanner();
     if (!RECEIVE_MODE) {
+      currentStage = 2;
       dot.className = 'dot connecting';
       dot.style.background = '';
       dot.style.boxShadow = '';
       statusText.textContent = 'Connecting to peer...';
       connectBtn.disabled = true;
     }
-    conn = peer.connect(peerId, { reliable: true });
-    setupConnection();
-    startConnectionTimer();
-    tryAttachEarlyIceWatcher();
+    relayPeerId = peerId;
+    doConnect(peerId);
   }
 
   // ── CONNECTION EVENTS ──────────────────────────────────────
   function setupConnection() {
     conn.on('open', () => {
-      clearConnectionTimer();
+      clearStageTimer();
       hideNatBanner();
       if (RECEIVE_MODE) {
         recvSetStatus('מחובר · ממתין לקובץ...', 'connected');
@@ -871,7 +1055,7 @@
         attachBtn.disabled = false;
         connectBtn.disabled = true;
         clearEmptyState();
-        addSystemMessage('✓ Peer-to-peer connection established');
+        addSystemMessage('✓ Stage ' + currentStage + ' connection established');
         watchIceState();
       }
     });
@@ -879,7 +1063,7 @@
     conn.on('data', handleIncomingData);
 
     conn.on('close', () => {
-      clearConnectionTimer();
+      clearStageTimer();
       if (RECEIVE_MODE) return;
       dot.className = 'dot';
       dot.style.background = '';
@@ -892,27 +1076,26 @@
       addSystemMessage('— Connection closed');
     });
 
-    conn.on('error', (err) => {
-      clearConnectionTimer();
-      if (RECEIVE_MODE) {
-        recvShowError('שגיאת חיבור: ' + err);
-      } else {
-        addSystemMessage('Connection error: ' + err);
-      }
+    conn.on('error', () => {
+      if (!relayMode) activateStage3();
     });
   }
 
   // ── ICE WATCHER ────────────────────────────────────────────
   function watchIceState() {
-    const rtc = conn.peerConnection;
+    const rtc = conn && conn.peerConnection;
     if (!rtc) return;
     rtc.oniceconnectionstatechange = () => {
       const s = rtc.iceConnectionState;
       if (s === 'failed') {
-        clearConnectionTimer();
-        showNatBanner();
-        if (!RECEIVE_MODE) addSystemMessage('✗ ICE failed — connection blocked by NAT or firewall');
-      } else if (s === 'disconnected' && conn.open) {
+        clearStageTimer();
+        if (RECEIVE_MODE) {
+          activateStage3();
+        } else {
+          showNatBanner();
+          addSystemMessage('✗ ICE failed — trying relay (Stage 3)');
+        }
+      } else if (s === 'disconnected' && conn && conn.open) {
         if (!RECEIVE_MODE) addSystemMessage('⚠ Connection interrupted');
       }
     };
@@ -924,19 +1107,23 @@
         const rtc = conn.peerConnection;
         rtc.oniceconnectionstatechange = () => {
           if (rtc.iceConnectionState === 'failed') {
-            clearConnectionTimer();
+            clearStageTimer();
             clearInterval(iv);
-            showNatBanner();
-            if (!RECEIVE_MODE) addSystemMessage('✗ ICE failed — connection blocked by NAT or firewall');
+            if (RECEIVE_MODE) {
+              activateStage3();
+            } else {
+              showNatBanner();
+              addSystemMessage('✗ ICE failed — trying relay (Stage 3)');
+            }
           }
         };
         clearInterval(iv);
       }
     }, 200);
-    setTimeout(() => clearInterval(iv), 20000);
+    setTimeout(() => clearInterval(iv), ICE_TIMEOUT_MS + 2000);
   }
 
-  // ── INCOMING DATA ──────────────────────────────────────────
+  // ── INCOMING DATA (direct P2P path) ────────────────────────
   function handleIncomingData(data) {
     if (typeof data === 'string') {
       if (!RECEIVE_MODE) addMessage(data, 'recv');
@@ -944,39 +1131,79 @@
     }
     if (!data || !data.type) return;
 
-    if (data.type === 'file-start') {
-      incomingFile = { name: data.name, size: data.size, fileType: data.fileType, chunks: [], received: 0, msgEl: null };
-      if (RECEIVE_MODE) {
-        recvSetStatus('מקבל קובץ...', 'connected');
-        recvShowFileInfo(data.name, data.size);
-      } else {
-        incomingFile.msgEl = addFileMessage('recv', data.name, data.size);
-      }
+    // Support both old protocol (file-start) and new (file-meta)
+    if (data.type === 'file-meta' || data.type === 'file-start') {
+      handleFileStart(
+        data.name,
+        data.size,
+        data.mimeType || data.fileType,
+        data.totalChunks || 0,
+        data.msgEl
+      );
       return;
     }
-
     if (data.type === 'file-chunk' && incomingFile) {
-      incomingFile.chunks.push(data.chunk);
-      incomingFile.received += data.chunk.byteLength;
-      const pct = Math.round((incomingFile.received / incomingFile.size) * 100);
-      if (RECEIVE_MODE) {
-        recvSetProgress(pct);
-      } else {
-        updateProgress(incomingFile.msgEl, pct);
-      }
+      // direct mode: data.chunk is ArrayBuffer
+      handleFileChunk(data.index != null ? data.index : null, data.chunk, null);
       return;
     }
-
     if (data.type === 'file-end' && incomingFile) {
-      const blob = new Blob(incomingFile.chunks, { type: incomingFile.fileType || 'application/octet-stream' });
-      const url  = URL.createObjectURL(blob);
-      if (RECEIVE_MODE) {
-        recvShowDownload(url, incomingFile.name);
-      } else {
-        finalizeReceivedFile(incomingFile.msgEl, url, incomingFile.name);
-        addSystemMessage('✓ File received: ' + incomingFile.name);
-      }
-      incomingFile = null;
+      handleFileEnd();
+    }
+  }
+
+  // ── FILE ASSEMBLY (shared by direct + relay paths) ─────────
+  function handleFileStart(name, size, mimeType, totalChunks) {
+    incomingFile = { name, size, mimeType, totalChunks, chunks: {}, received: 0, msgEl: null };
+    if (RECEIVE_MODE) {
+      recvSetStatus('מקבל קובץ...', 'connected');
+      recvShowFileInfo(name, size);
+    } else {
+      incomingFile.msgEl = addFileMessage('recv', name, size);
+    }
+  }
+
+  function handleFileChunk(index, arrayBuf, base64) {
+    if (!incomingFile) return;
+    const key = (index != null) ? index : Object.keys(incomingFile.chunks).length;
+    incomingFile.chunks[key] = arrayBuf !== null ? arrayBuf : base64;
+    if (arrayBuf !== null) incomingFile.received += arrayBuf.byteLength;
+    const received = Object.keys(incomingFile.chunks).length;
+    const total    = incomingFile.totalChunks || 1;
+    const pct      = Math.min(99, Math.round((received / total) * 100));
+    if (RECEIVE_MODE) {
+      recvSetProgress(pct);
+    } else {
+      updateProgress(incomingFile.msgEl, pct);
+    }
+  }
+
+  function handleFileEnd() {
+    if (!incomingFile) return;
+    const total   = incomingFile.totalChunks;
+    const ordered = Array.from({ length: total }, (_, i) => incomingFile.chunks[i]);
+    const mimeType = incomingFile.mimeType || 'application/octet-stream';
+    const name     = incomingFile.name;
+    const msgEl    = incomingFile.msgEl;
+    incomingFile   = null;
+
+    // Detect format: base64 strings (relay) vs ArrayBuffers (direct)
+    let blob;
+    if (typeof ordered[0] === 'string') {
+      const bin   = atob(ordered.join(''));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      blob = new Blob([bytes], { type: mimeType });
+    } else {
+      blob = new Blob(ordered.filter(Boolean), { type: mimeType });
+    }
+
+    const url = URL.createObjectURL(blob);
+    if (RECEIVE_MODE) {
+      recvShowDownload(url, name);
+    } else {
+      finalizeReceivedFile(msgEl, url, name);
+      addSystemMessage('✓ File received: ' + name);
     }
   }
 
