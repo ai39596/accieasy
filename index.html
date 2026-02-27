@@ -4,52 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>P2P Messenger</title>
-<script>
-/* ── WebSocket interceptor — must run BEFORE PeerJS loads ──────────────────
- * Patches window.WebSocket so we can:
- *   1. Expose the live PeerJS WS as window.__getPeerWs()
- *   2. Intercept CANDIDATE messages whose candidate starts with __APP_RELAY__
- *      (Stage 3 signaling-relay protocol) before PeerJS sees them.         */
-(function () {
-  var _Orig = window.WebSocket;
-  var _peerWs = null;
-  window.__getPeerWs = function () { return _peerWs; };
-  window.__relayMessageHandler = null;
-
-  function PatchedWS(url, protocols) {
-    var ws = (protocols !== undefined) ? new _Orig(url, protocols) : new _Orig(url);
-    if (url && url.indexOf('peerjs.com') !== -1) _peerWs = ws;
-    /* Capture-phase listener runs before PeerJS's own onmessage handler.   */
-    ws.addEventListener('message', function (evt) {
-      try {
-        var msg = JSON.parse(evt.data);
-        if (
-          msg.type === 'CANDIDATE' &&
-          msg.payload &&
-          typeof msg.payload.candidate === 'string' &&
-          msg.payload.candidate.indexOf('__APP_RELAY__') === 0
-        ) {
-          /* Relay message — consume it; do not forward to PeerJS.          */
-          if (window.__relayMessageHandler) {
-            var data = JSON.parse(
-              msg.payload.candidate.slice('__APP_RELAY__'.length)
-            );
-            window.__relayMessageHandler(data, msg.src);
-          }
-          evt.stopImmediatePropagation();
-        }
-      } catch (e) {}
-    }, true /* capture */);
-    return ws;
-  }
-  PatchedWS.CONNECTING = 0;
-  PatchedWS.OPEN       = 1;
-  PatchedWS.CLOSING    = 2;
-  PatchedWS.CLOSED     = 3;
-  PatchedWS.prototype  = _Orig.prototype;
-  window.WebSocket     = PatchedWS;
-}());
-</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap');
@@ -729,6 +683,13 @@
     document.getElementById('recv-progress-label').style.display = 'block';
   }
 
+  // Pre-populate file info from QR URL params if available
+  const _autoConnectFile = _urlParams.get('file');
+  const _autoConnectSize = parseInt(_urlParams.get('size') || '0', 10);
+  if (RECEIVE_MODE && _autoConnectFile) {
+    recvShowFileInfo(decodeURIComponent(_autoConnectFile), _autoConnectSize);
+  }
+
   function recvSetProgress(pct) {
     document.getElementById('recv-progress-bar').style.width = pct + '%';
     document.getElementById('recv-progress-label').textContent = pct + '%';
@@ -760,10 +721,10 @@
 
   // ── TURN CONFIGURATION (Stage 4) ──────────────────────────
   // Sign up free at dashboard.metered.ca or xirsys.com, then fill in:
-  const TURN_URLS = 'turn:your-turn-server.com:3478';
-  const TURN_USER = 'username';
-  const TURN_CRED = 'credential';
-  const TURN_ENABLED = false; // set true once credentials are configured
+  const TURN_URLS = 'turn:free.expressturn.com:3478';
+  const TURN_USER = '000000002087447535';
+  const TURN_CRED = 'psoUg7h48QvZMgIPWbZ02sNATXM=';
+  const TURN_ENABLED = true; // set true once credentials are configured
 
   // ── STATE ──────────────────────────────────────────────────
   let peer, conn;
@@ -783,6 +744,29 @@
 
   let incomingFile = null;
   const CHUNK_SIZE = 16 * 1024;
+
+  // -- E2EE: AES-256-GCM --
+  let _e2eeKey = null;  // CryptoKey derived from ?key= URL param
+
+  async function e2eeImportKey(base64Key) {
+    const raw = Uint8Array.from(atob(base64Key), c => c.charCodeAt(0));
+    _e2eeKey = await crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['decrypt']);
+  }
+
+  async function e2eeDecryptAB(encBuf) {
+    const raw = new Uint8Array(encBuf);
+    return crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, _e2eeKey, raw.slice(12));
+  }
+
+  async function e2eeDecryptB64(b64) {
+    const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, _e2eeKey, raw.slice(12));
+    let bin = '', arr = new Uint8Array(plain);
+    for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
+    return atob(btoa(bin));  // returns ArrayBuffer-viewable bytes as string; we store as Uint8Array
+  }
+
+
 
   // ── DOM REFS (messenger mode) ──────────────────────────────
   const dot        = document.getElementById('dot');
@@ -840,17 +824,40 @@
 
   // ── STAGE 3: SIGNALING RELAY ────────────────────────────────
   function relaySend(data) {
-    const ws = window.__getPeerWs();
-    if (!ws || ws.readyState !== 1) return;
-    ws.send(JSON.stringify({
-      type: 'CANDIDATE',
-      payload: {
-        candidate:     '__APP_RELAY__' + JSON.stringify(data),
-        sdpMLineIndex: 0,
-        sdpMid:        '0'
-      },
-      dst: relayPeerId
-    }));
+    if (!relayPeerId || !peer || !peer.socket) return;
+    try {
+      peer.socket.send({
+        type: 'CANDIDATE',
+        payload: {
+          candidate:     '__APP_RELAY__' + JSON.stringify(data),
+          sdpMLineIndex: 0,
+          sdpMid:        '0'
+        },
+        dst: relayPeerId
+      });
+    } catch (e) {}
+  }
+
+  function interceptRelayMessages() {
+    const sock = peer && peer.socket && peer.socket._socket;
+    if (!sock) return;
+    sock.addEventListener('message', function (evt) {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (
+          msg.type === 'CANDIDATE' &&
+          msg.payload &&
+          typeof msg.payload.candidate === 'string' &&
+          msg.payload.candidate.indexOf('__APP_RELAY__') === 0
+        ) {
+          if (window.__relayMessageHandler) {
+            const data = JSON.parse(msg.payload.candidate.slice('__APP_RELAY__'.length));
+            window.__relayMessageHandler(data, msg.src);
+          }
+          evt.stopImmediatePropagation();
+        }
+      } catch (e) {}
+    }, true /* capture */);
   }
 
   function onRelayOpen(srcId) {
@@ -871,6 +878,9 @@
     if (!relayPeerId) relayPeerId = srcId;
     switch (data.type) {
       case 'relay-hello':
+        // Ensure relay mode is active even if our own ICE timeout hasn't fired yet
+        currentStage = 3;
+        relayMode  = true;
         relayReady = true;
         relaySend({ type: 'relay-ack' });
         onRelayOpen(srcId);
@@ -952,6 +962,7 @@
 
     peer.on('open', (id) => {
       myId = id;
+      interceptRelayMessages();
       if (!RECEIVE_MODE) {
         myIdEl.textContent = id;
         dot.className = 'dot online';
@@ -989,6 +1000,13 @@
       setupConnection();
       if (!RECEIVE_MODE) addSystemMessage('Incoming connection from ' + conn.peer.substring(0, 8) + '...');
     });
+  }
+
+
+  // -- Import E2EE key from URL if present --
+  const _e2eeKeyParam = _urlParams.get('key');
+  if (_e2eeKeyParam) {
+    e2eeImportKey(_e2eeKeyParam).catch(err => console.warn('E2EE key import failed:', err));
   }
 
   // Stage 1+2: STUN (WebRTC tries direct host candidates first automatically)
@@ -1166,8 +1184,29 @@
   function handleFileChunk(index, arrayBuf, base64) {
     if (!incomingFile) return;
     const key = (index != null) ? index : Object.keys(incomingFile.chunks).length;
-    incomingFile.chunks[key] = arrayBuf !== null ? arrayBuf : base64;
-    if (arrayBuf !== null) incomingFile.received += arrayBuf.byteLength;
+    // Decrypt if E2EE key is present
+    if (_e2eeKey && (arrayBuf !== null)) {
+      e2eeDecryptAB(arrayBuf).then(plain => {
+        incomingFile.chunks[key] = plain;
+        incomingFile.received += plain.byteLength;
+        _updateChunkProgress(key);
+      }).catch(err => console.error('E2EE decrypt error (direct):', err));
+    } else if (_e2eeKey && base64 !== null) {
+      const rawEncArr = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      e2eeDecryptAB(rawEncArr.buffer).then(plain => {
+        incomingFile.chunks[key] = plain;
+        incomingFile.received += plain.byteLength;
+        _updateChunkProgress(key);
+      }).catch(err => console.error('E2EE decrypt error (relay):', err));
+    } else {
+      incomingFile.chunks[key] = arrayBuf !== null ? arrayBuf : base64;
+      if (arrayBuf !== null) incomingFile.received += arrayBuf.byteLength;
+      _updateChunkProgress(key);
+    }
+  }
+
+  function _updateChunkProgress(key) {
+    if (!incomingFile) return;
     const received = Object.keys(incomingFile.chunks).length;
     const total    = incomingFile.totalChunks || 1;
     const pct      = Math.min(99, Math.round((received / total) * 100));
@@ -1201,6 +1240,14 @@
     const url = URL.createObjectURL(blob);
     if (RECEIVE_MODE) {
       recvShowDownload(url, name);
+      // Acknowledge receipt so the sender knows the file arrived
+      try {
+        if (relayMode && relayPeerId) {
+          relaySend({ type: 'transfer-complete' });
+        } else if (conn && conn.open) {
+          conn.send({ type: 'transfer-complete' });
+        }
+      } catch (_e) {}
     } else {
       finalizeReceivedFile(msgEl, url, name);
       addSystemMessage('✓ File received: ' + name);
