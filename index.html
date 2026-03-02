@@ -1,1424 +1,277 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>P2P Messenger</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap');
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Download Insurance Information</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  :root {
-    --bg: #0a0a0f;
-    --surface: #111118;
-    --border: #1e1e2e;
-    --accent: #00ff88;
-    --accent2: #0088ff;
-    --text: #e8e8f0;
-    --muted: #55556a;
-    --sent-bg: #0d2a1a;
-    --recv-bg: #0d1a2a;
-  }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 40px 32px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Syne', sans-serif;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    background-image: radial-gradient(ellipse at 20% 50%, rgba(0,255,136,0.04) 0%, transparent 60%),
-                      radial-gradient(ellipse at 80% 20%, rgba(0,136,255,0.04) 0%, transparent 60%);
-  }
+    .icon {
+      font-size: 56px;
+      margin-bottom: 16px;
+    }
 
-  h1 {
-    font-size: 1.4rem;
-    font-weight: 800;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--accent);
-    text-shadow: 0 0 30px rgba(0,255,136,0.4);
-    margin-bottom: 4px;
-  }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 8px;
+    }
 
-  .subtitle {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--muted);
-    letter-spacing: 0.1em;
-    margin-bottom: 28px;
-  }
+    .subtitle {
+      color: #64748b;
+      font-size: 15px;
+      margin-bottom: 32px;
+      line-height: 1.5;
+    }
 
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    width: 100%;
-    max-width: 480px;
-    overflow: hidden;
-    box-shadow: 0 0 60px rgba(0,0,0,0.6), 0 0 120px rgba(0,255,136,0.03);
-  }
+    .btn {
+      display: inline-block;
+      background: #2563eb;
+      color: #fff;
+      padding: 14px 32px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.2s;
+    }
 
-  .status-bar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 18px;
-    border-bottom: 1px solid var(--border);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.72rem;
-  }
+    .btn:hover { background: #1d4ed8; }
+    .btn:disabled { background: #94a3b8; cursor: not-allowed; }
 
-  .dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--muted);
-    flex-shrink: 0;
-    transition: background 0.4s, box-shadow 0.4s;
-  }
-  .dot.online     { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
-  .dot.connecting { background: #ffaa00; box-shadow: 0 0 8px #ffaa00; animation: pulse 1s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-  #status-text { color: var(--muted); }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #e2e8f0;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
 
-  .id-section {
-    padding: 16px 18px;
-    border-bottom: 1px solid var(--border);
-  }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-  .label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.65rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 8px;
-  }
+    .status-text {
+      color: #475569;
+      font-size: 15px;
+      margin-top: 12px;
+    }
 
-  .id-box {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 14px;
-  }
+    .note {
+      color: #94a3b8;
+      font-size: 13px;
+      margin-top: 20px;
+      line-height: 1.5;
+    }
 
-  #my-id {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.85rem;
-    color: var(--accent);
-    flex: 1;
-    letter-spacing: 0.05em;
-    word-break: break-all;
-  }
+    .error-icon { color: #ef4444; }
+    .success-icon { color: #22c55e; }
 
-  .copy-btn {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--muted);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.65rem;
-    padding: 4px 10px;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-  }
-  .copy-btn:hover  { border-color: var(--accent); color: var(--accent); }
-  .copy-btn.copied { border-color: var(--accent); color: var(--accent); }
+    .error-msg {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 14px;
+      color: #dc2626;
+      font-size: 14px;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
 
-  .connect-section {
-    padding: 16px 18px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    gap: 8px;
-  }
-
-  input[type="text"] {
-    flex: 1;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.82rem;
-    padding: 10px 14px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  input[type="text"]:focus { border-color: var(--accent2); }
-  input[type="text"]::placeholder { color: var(--muted); }
-
-  button.primary {
-    background: var(--accent);
-    border: none;
-    border-radius: 8px;
-    color: #000;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 0.8rem;
-    padding: 10px 18px;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-    letter-spacing: 0.05em;
-  }
-  button.primary:hover    { background: #00ffaa; transform: translateY(-1px); }
-  button.primary:disabled { background: var(--muted); cursor: not-allowed; transform: none; }
-
-  /* NAT BANNER */
-  .nat-banner {
-    display: none;
-    margin: 0 18px;
-    padding: 14px 16px;
-    background: rgba(255,80,80,0.08);
-    border: 1px solid rgba(255,80,80,0.3);
-    border-radius: 10px;
-    animation: bannerIn 0.3s ease;
-  }
-  .nat-banner.visible { display: block; }
-  @keyframes bannerIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
-  .nat-banner-title {
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 0.82rem;
-    color: #ff6060;
-    margin-bottom: 6px;
-  }
-  .nat-banner-body {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.68rem;
-    color: var(--muted);
-    line-height: 1.7;
-  }
-  .nat-banner-body a { color: #ff9090; text-decoration: underline; cursor: pointer; }
-
-  /* MESSAGES */
-  #messages {
-    height: 320px;
-    overflow-y: auto;
-    padding: 16px 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-  }
-
-  .empty-state {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.72rem;
-    color: var(--muted);
-    text-align: center;
-    line-height: 1.8;
-  }
-
-  .msg {
-    max-width: 82%;
-    padding: 10px 14px;
-    border-radius: 12px;
-    font-size: 0.88rem;
-    line-height: 1.5;
-    animation: msgIn 0.2s ease;
-  }
-  @keyframes msgIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
-
-  .msg.sent {
-    align-self: flex-end;
-    background: var(--sent-bg);
-    border: 1px solid rgba(0,255,136,0.15);
-    border-bottom-right-radius: 4px;
-  }
-  .msg.recv {
-    align-self: flex-start;
-    background: var(--recv-bg);
-    border: 1px solid rgba(0,136,255,0.15);
-    border-bottom-left-radius: 4px;
-  }
-
-  .msg .meta {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.6rem;
-    color: var(--muted);
-    margin-bottom: 4px;
-  }
-  .msg.sent .meta { text-align: right; color: rgba(0,255,136,0.5); }
-  .msg.recv .meta { color: rgba(0,136,255,0.5); }
-
-  /* FILE MESSAGES */
-  .msg.file-msg { padding: 12px 14px; }
-
-  .file-bubble {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .file-icon {
-    width: 36px; height: 36px;
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.1rem;
-    flex-shrink: 0;
-  }
-  .sent .file-icon { background: rgba(0,255,136,0.1); }
-  .recv .file-icon { background: rgba(0,136,255,0.1); }
-
-  .file-info { flex: 1; min-width: 0; }
-  .file-name {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.73rem;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-bottom: 2px;
-  }
-  .file-size {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.6rem;
-    color: var(--muted);
-  }
-
-  .dl-btn {
-    background: var(--accent2);
-    border: none;
-    border-radius: 6px;
-    color: #fff;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 0.68rem;
-    padding: 6px 11px;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-  .dl-btn:hover    { background: #33aaff; transform: translateY(-1px); }
-  .dl-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
-
-  .sent-badge {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.65rem;
-    color: var(--accent);
-    flex-shrink: 0;
-  }
-
-  .progress-wrap {
-    margin-top: 8px;
-    background: rgba(255,255,255,0.05);
-    border-radius: 4px;
-    height: 4px;
-    overflow: hidden;
-  }
-  .progress-bar {
-    height: 100%;
-    border-radius: 4px;
-    background: var(--accent);
-    width: 0%;
-    transition: width 0.08s linear;
-  }
-  .recv .progress-bar { background: var(--accent2); }
-  .progress-label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.58rem;
-    color: var(--muted);
-    margin-top: 4px;
-    text-align: right;
-  }
-
-  .system-msg {
-    text-align: center;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.65rem;
-    color: var(--muted);
-    padding: 4px 0;
-  }
-
-  /* SEND BAR */
-  .send-bar {
-    padding: 14px 18px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    gap: 8px;
-  }
-
-  #msg-input { flex: 1; }
-
-  .attach-btn {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--muted);
-    font-size: 1.05rem;
-    width: 42px;
-    cursor: pointer;
-    transition: all 0.2s;
-    flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .attach-btn:hover    { border-color: var(--accent2); color: var(--accent2); }
-  .attach-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-
-  .send-btn {
-    background: var(--accent2);
-    border: none;
-    border-radius: 8px;
-    color: #fff;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 0.8rem;
-    padding: 10px 18px;
-    cursor: pointer;
-    transition: all 0.2s;
-    flex-shrink: 0;
-  }
-  .send-btn:hover    { background: #33aaff; transform: translateY(-1px); }
-  .send-btn:disabled { background: var(--muted); cursor: not-allowed; transform: none; }
-
-  #file-input { display: none; }
-
-  /* ── RECEIVE MODE ──────────────────────────────────────── */
-  #receive-mode {
-    display: none;
-    width: 100%;
-    max-width: 400px;
-    text-align: center;
-  }
-
-  .recv-icon {
-    font-size: 4rem;
-    margin-bottom: 16px;
-    display: block;
-    animation: floatIcon 3s ease-in-out infinite;
-  }
-  @keyframes floatIcon {
-    0%,100% { transform: translateY(0); }
-    50%     { transform: translateY(-8px); }
-  }
-
-  .recv-title {
-    font-size: 1.5rem;
-    font-weight: 800;
-    color: var(--text);
-    letter-spacing: 0.05em;
-    margin-bottom: 6px;
-  }
-
-  .recv-subtitle {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--muted);
-    margin-bottom: 32px;
-  }
-
-  .recv-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 28px 24px;
-    box-shadow: 0 0 60px rgba(0,0,0,0.5), 0 0 100px rgba(0,136,255,0.04);
-  }
-
-  .recv-status-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 20px;
-    padding: 12px 16px;
-    background: var(--bg);
-    border-radius: 10px;
-    border: 1px solid var(--border);
-  }
-
-  .recv-status-dot {
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    background: var(--muted);
-    flex-shrink: 0;
-    transition: background 0.4s, box-shadow 0.4s;
-  }
-  .recv-status-dot.connecting { background: #ffaa00; box-shadow: 0 0 8px #ffaa00; animation: pulse 1s infinite; }
-  .recv-status-dot.connected  { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
-  .recv-status-dot.done       { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
-  .recv-status-dot.error      { background: #ff6060; box-shadow: 0 0 8px #ff6060; }
-
-  #recv-status-text {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    color: var(--muted);
-    flex: 1;
-    text-align: left;
-  }
-
-  /* Progress bar */
-  .recv-progress-wrap {
-    background: rgba(255,255,255,0.05);
-    border-radius: 6px;
-    height: 8px;
-    overflow: hidden;
-    margin-bottom: 8px;
-    display: none;
-  }
-  .recv-progress-bar {
-    height: 100%;
-    border-radius: 6px;
-    background: linear-gradient(90deg, var(--accent2), var(--accent));
-    width: 0%;
-    transition: width 0.1s linear;
-  }
-  #recv-progress-label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.65rem;
-    color: var(--muted);
-    text-align: right;
-    margin-bottom: 20px;
-    display: none;
-  }
-
-  /* File info box (shown when file transfer starts) */
-  .recv-file-info {
-    display: none;
-    align-items: center;
-    gap: 14px;
-    padding: 14px 16px;
-    background: rgba(0,136,255,0.06);
-    border: 1px solid rgba(0,136,255,0.2);
-    border-radius: 12px;
-    margin-bottom: 20px;
-    text-align: left;
-  }
-  .recv-file-emoji { font-size: 2rem; flex-shrink: 0; }
-  .recv-file-name {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.8rem;
-    color: var(--text);
-    font-weight: 600;
-    margin-bottom: 3px;
-    word-break: break-all;
-  }
-  .recv-file-size {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.62rem;
-    color: var(--muted);
-  }
-
-  /* Download button */
-  #recv-download-btn {
-    display: none;
-    width: 100%;
-    padding: 16px;
-    background: linear-gradient(135deg, var(--accent2), #0055cc);
-    border: none;
-    border-radius: 14px;
-    color: #fff;
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 1.05rem;
-    letter-spacing: 0.05em;
-    cursor: pointer;
-    transition: all 0.25s;
-    box-shadow: 0 4px 24px rgba(0,136,255,0.35);
-    margin-bottom: 12px;
-  }
-  #recv-download-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 32px rgba(0,136,255,0.5);
-  }
-  #recv-download-btn:active { transform: translateY(0); }
-
-  .recv-done-note {
-    display: none;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.65rem;
-    color: var(--muted);
-    line-height: 1.7;
-  }
-
-  .recv-error-box {
-    display: none;
-    padding: 14px 16px;
-    background: rgba(255,80,80,0.08);
-    border: 1px solid rgba(255,80,80,0.3);
-    border-radius: 10px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.72rem;
-    color: #ff9090;
-    line-height: 1.7;
-  }
-</style>
+    .get-app {
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 1px solid #e2e8f0;
+      color: #64748b;
+      font-size: 13px;
+    }
+  </style>
 </head>
 <body>
-
-<!-- ── MESSENGER MODE (default) ───────────────────────── -->
-<h1 id="page-title">⬡ P2P Messenger</h1>
-<p class="subtitle" id="page-subtitle">// powered by WebRTC · no server · end-to-end</p>
-
-<div class="card" id="messenger-card">
-  <div class="status-bar">
-    <div class="dot connecting" id="dot"></div>
-    <span id="status-text">Connecting to signaling server...</span>
+  <div class="card" id="card">
+    <!-- Content injected by JS -->
   </div>
-  <div class="id-section">
-    <div class="label">Your Peer ID — share this with the other device</div>
-    <div class="id-box">
-      <span id="my-id">generating...</span>
-      <button class="copy-btn" id="copy-btn" onclick="copyId()">copy</button>
-    </div>
-  </div>
-  <div class="connect-section">
-    <input type="text" id="peer-id-input" placeholder="Enter other device's Peer ID..." />
-    <button class="primary" id="connect-btn" onclick="connectToPeer()" disabled>Connect</button>
-  </div>
-  <div class="nat-banner" id="nat-banner">
-    <div class="nat-banner-title">⚠ Connection Blocked by NAT / Firewall</div>
-    <div class="nat-banner-body">
-      Your network is preventing a direct peer-to-peer connection.<br/>
-      This usually happens when one device is on <strong style="color:#ff9090">cellular data</strong>
-      and the other on <strong style="color:#ff9090">WiFi</strong>, or behind a strict corporate firewall.<br/><br/>
-      To fix this, a <strong style="color:#ff9090">TURN relay server</strong> is needed. Sign up free at
-      <a onclick="window.open('https://xirsys.com','_blank')">xirsys.com</a> or
-      <a onclick="window.open('https://dashboard.metered.ca/signup','_blank')">metered.ca</a>.
-    </div>
-  </div>
-  <div id="banner-gap" style="display:none;height:14px"></div>
-  <div id="messages">
-    <div class="empty-state">No messages yet.<br/>Connect to another peer to start chatting.</div>
-  </div>
-  <div class="send-bar">
-    <button class="attach-btn" id="attach-btn" title="Send a file"
-            onclick="document.getElementById('file-input').click()" disabled>📎</button>
-    <input type="file" id="file-input" onchange="sendFile(this.files[0])" />
-    <input type="text" id="msg-input" placeholder="Type a message..."
-           disabled onkeydown="if(event.key==='Enter') sendMessage()" />
-    <button class="send-btn" id="send-btn" onclick="sendMessage()" disabled>Send</button>
-  </div>
-</div>
 
-<!-- ── RECEIVE MODE (shown when ?peer= is in URL) ─────── -->
-<div id="receive-mode" dir="rtl">
-  <span class="recv-icon">📄</span>
-  <div class="recv-title">דוח תאונת דרכים</div>
-  <div class="recv-subtitle">// קבלת קובץ ישירה · P2P · ללא שרת</div>
+  <script type="module">
+    // ─── CONFIGURATION ────────────────────────────────────────────────────────
+    // Update this to your deployed Render server URL
+    const SERVER_URL = 'https://accident-app-server.onrender.com';
+    // ──────────────────────────────────────────────────────────────────────────
 
-  <div class="recv-card">
-    <!-- Status -->
-    <div class="recv-status-row">
-      <div class="recv-status-dot connecting" id="recv-dot"></div>
-      <span id="recv-status-text">מתחבר לשולח...</span>
-    </div>
+    const card = document.getElementById('card');
 
-    <!-- File info (visible once transfer starts) -->
-    <div class="recv-file-info" id="recv-file-info">
-      <div class="recv-file-emoji">📄</div>
-      <div>
-        <div class="recv-file-name" id="recv-file-name">accident_report.pdf</div>
-        <div class="recv-file-size" id="recv-file-size">—</div>
-      </div>
-    </div>
-
-    <!-- Progress -->
-    <div class="recv-progress-wrap" id="recv-progress-wrap">
-      <div class="recv-progress-bar" id="recv-progress-bar"></div>
-    </div>
-    <div id="recv-progress-label"></div>
-
-    <!-- Download button (visible when done) -->
-    <button id="recv-download-btn" onclick="recvDownload()">
-      ↓ &nbsp;הורד את הדוח
-    </button>
-
-    <!-- Done note -->
-    <div class="recv-done-note" id="recv-done-note">
-      הקובץ התקבל בהצלחה.<br/>לחץ על הכפתור להורדה.
-    </div>
-
-    <!-- Error -->
-    <div class="recv-error-box" id="recv-error-box"></div>
-  </div>
-</div>
-
-<script>
-  // ── DETECT RECEIVE MODE ────────────────────────────────
-  const _urlParams = new URLSearchParams(window.location.search);
-  const _autoConnectPeer = _urlParams.get('peer');
-  const RECEIVE_MODE = !!_autoConnectPeer;
-
-  if (RECEIVE_MODE) {
-    document.getElementById('page-title').style.display    = 'none';
-    document.getElementById('page-subtitle').style.display = 'none';
-    document.getElementById('messenger-card').style.display = 'none';
-    document.getElementById('receive-mode').style.display  = 'block';
-    document.title = 'דוח תאונת דרכים';
-    document.documentElement.lang = 'he';
-    document.documentElement.dir  = 'rtl';
-  }
-
-  // ── RECEIVE MODE HELPERS ───────────────────────────────
-  let _recvDownloadUrl = null;
-  let _recvFileName    = 'accident_report.pdf';
-
-  function recvSetStatus(text, dotClass) {
-    document.getElementById('recv-status-text').textContent = text;
-    const dot = document.getElementById('recv-dot');
-    dot.className = 'recv-status-dot ' + dotClass;
-  }
-
-  function recvShowFileInfo(name, size) {
-    document.getElementById('recv-file-name').textContent = name;
-    document.getElementById('recv-file-size').textContent = fmtBytes(size);
-    document.getElementById('recv-file-info').style.display = 'flex';
-    document.getElementById('recv-progress-wrap').style.display = 'block';
-    document.getElementById('recv-progress-label').style.display = 'block';
-  }
-
-  // Pre-populate file info from QR URL params if available
-  const _autoConnectFile = _urlParams.get('file');
-  const _autoConnectSize = parseInt(_urlParams.get('size') || '0', 10);
-  if (RECEIVE_MODE && _autoConnectFile) {
-    recvShowFileInfo(decodeURIComponent(_autoConnectFile), _autoConnectSize);
-  }
-
-  function recvSetProgress(pct) {
-    document.getElementById('recv-progress-bar').style.width = pct + '%';
-    document.getElementById('recv-progress-label').textContent = pct + '%';
-  }
-
-  function recvShowDownload(url, name) {
-    _recvDownloadUrl = url;
-    _recvFileName    = name;
-    recvSetProgress(100);
-    document.getElementById('recv-progress-label').textContent = '100% — הושלם';
-    document.getElementById('recv-download-btn').style.display = 'block';
-    document.getElementById('recv-done-note').style.display = 'block';
-    recvSetStatus('ההעברה הושלמה בהצלחה ✓', 'done');
-    // Auto-trigger download
-    recvDownload();
-  }
-
-  function recvShowError(msg) {
-    recvSetStatus('ההתחברות נכשלה', 'error');
-    const box = document.getElementById('recv-error-box');
-    box.style.display = 'block';
-    box.textContent = msg;
-  }
-
-  function recvDownload() {
-    if (!_recvDownloadUrl) return;
-    triggerDownload(_recvDownloadUrl, _recvFileName);
-  }
-
-  // ── TURN CONFIGURATION (Stage 4) ──────────────────────────
-  // Sign up free at dashboard.metered.ca or xirsys.com, then fill in:
-  const TURN_URLS = 'turn:free.expressturn.com:3478';
-  const TURN_USER = '000000002087447535';
-  const TURN_CRED = 'psoUg7h48QvZMgIPWbZ02sNATXM=';
-  const TURN_ENABLED = true; // set true once credentials are configured
-
-  // ── STATE ──────────────────────────────────────────────────
-  let peer, conn;
-  let myId = null;
-  let iceFailedDetected = false;
-
-  // Stage tracking
-  let currentStage = 1;
-  let stageTimer   = null;
-  const ICE_TIMEOUT_MS   = 8000;
-  const RELAY_TIMEOUT_MS = 20000;
-
-  // Relay (Stage 3) state
-  let relayMode    = false;
-  let relayReady   = false;
-  let relayPeerId  = null;
-
-  let incomingFile = null;
-  const CHUNK_SIZE = 16 * 1024;
-
-  // -- E2EE: AES-256-GCM --
-  let _e2eeKey = null;  // CryptoKey derived from ?key= URL param
-
-  async function e2eeImportKey(base64Key) {
-    const raw = Uint8Array.from(atob(base64Key), c => c.charCodeAt(0));
-    _e2eeKey = await crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['decrypt']);
-  }
-
-  async function e2eeDecryptAB(encBuf) {
-    const raw = new Uint8Array(encBuf);
-    return crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, _e2eeKey, raw.slice(12));
-  }
-
-  async function e2eeDecryptB64(b64) {
-    const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, _e2eeKey, raw.slice(12));
-    let bin = '', arr = new Uint8Array(plain);
-    for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
-    return atob(btoa(bin));  // returns ArrayBuffer-viewable bytes as string; we store as Uint8Array
-  }
-
-
-
-  // ── DOM REFS (messenger mode) ──────────────────────────────
-  const dot        = document.getElementById('dot');
-  const statusText = document.getElementById('status-text');
-  const myIdEl     = document.getElementById('my-id');
-  const connectBtn = document.getElementById('connect-btn');
-  const msgInput   = document.getElementById('msg-input');
-  const sendBtn    = document.getElementById('send-btn');
-  const attachBtn  = document.getElementById('attach-btn');
-  const fileInput  = document.getElementById('file-input');
-  const messagesEl = document.getElementById('messages');
-  const natBanner  = document.getElementById('nat-banner');
-  const bannerGap  = document.getElementById('banner-gap');
-
-  // ── NAT BANNER (messenger mode only) ───────────────────────
-  function showNatBanner() {
-    if (iceFailedDetected) return;
-    iceFailedDetected = true;
-    if (RECEIVE_MODE) {
-      activateStage3();   // receive mode: try relay instead of showing error
-      return;
+    function show(html) {
+      card.innerHTML = html;
     }
-    natBanner.classList.add('visible');
-    bannerGap.style.display = 'block';
-    dot.className = 'dot';
-    dot.style.background = '#ff6060';
-    dot.style.boxShadow = '0 0 8px rgba(255,96,96,0.7)';
-    statusText.textContent = 'Blocked — NAT or firewall preventing connection';
-    connectBtn.disabled = false;
-  }
 
-  function hideNatBanner() {
-    iceFailedDetected = false;
-    if (RECEIVE_MODE) return;
-    natBanner.classList.remove('visible');
-    bannerGap.style.display = 'none';
-    dot.style.background = '';
-    dot.style.boxShadow = '';
-  }
-
-  // ── STAGE TIMER ────────────────────────────────────────────
-  function clearStageTimer() {
-    if (stageTimer) { clearTimeout(stageTimer); stageTimer = null; }
-  }
-
-  function updateStageStatus() {
-    const labels = ['', 'ישיר', 'STUN', 'ממסר', 'TURN'];
-    if (!RECEIVE_MODE) return;
-    const msgs = [
-      '', 'מנסה התחברות ישירה...', 'מנסה STUN...',
-      'ממסר דרך שרת האותות...', 'ממסר דרך שרת TURN...'
-    ];
-    recvSetStatus(`שלב ${currentStage}/4 · ${labels[currentStage]} · ${msgs[currentStage]}`, 'connecting');
-  }
-
-  // ── STAGE 3: SIGNALING RELAY ────────────────────────────────
-  function relaySend(data) {
-    if (!relayPeerId || !peer || !peer.socket) return;
-    try {
-      peer.socket.send({
-        type: 'CANDIDATE',
-        payload: {
-          candidate:     '__APP_RELAY__' + JSON.stringify(data),
-          sdpMLineIndex: 0,
-          sdpMid:        '0'
-        },
-        dst: relayPeerId
-      });
-    } catch (e) {}
-  }
-
-  function interceptRelayMessages() {
-    const sock = peer && peer.socket && peer.socket._socket;
-    if (!sock) return;
-    sock.addEventListener('message', function (evt) {
-      try {
-        const msg = JSON.parse(evt.data);
-        if (
-          msg.type === 'CANDIDATE' &&
-          msg.payload &&
-          typeof msg.payload.candidate === 'string' &&
-          msg.payload.candidate.indexOf('__APP_RELAY__') === 0
-        ) {
-          if (window.__relayMessageHandler) {
-            const data = JSON.parse(msg.payload.candidate.slice('__APP_RELAY__'.length));
-            window.__relayMessageHandler(data, msg.src);
-          }
-          evt.stopImmediatePropagation();
-        }
-      } catch (e) {}
-    }, true /* capture */);
-  }
-
-  function onRelayOpen(srcId) {
-    clearStageTimer();
-    if (RECEIVE_MODE) {
-      recvSetStatus('מחובר דרך ממסר · ממתין לקובץ...', 'connected');
-    } else {
-      dot.className = 'dot online';
-      statusText.textContent = 'Connected via relay to ' + srcId.substring(0, 8) + '...';
-      msgInput.disabled = false;
-      sendBtn.disabled = false;
-      clearEmptyState();
-      addSystemMessage('✓ Stage 3 relay connection established');
+    function showLoading(text) {
+      show(`
+        <div class="icon">🔒</div>
+        <h1>Insurance Information</h1>
+        <div class="spinner"></div>
+        <p class="status-text">${text}</p>
+      `);
     }
-  }
 
-  window.__relayMessageHandler = function (data, srcId) {
-    if (!relayPeerId) relayPeerId = srcId;
-    switch (data.type) {
-      case 'relay-hello':
-        // Ensure relay mode is active even if our own ICE timeout hasn't fired yet
-        currentStage = 3;
-        relayMode  = true;
-        relayReady = true;
-        relaySend({ type: 'relay-ack' });
-        onRelayOpen(srcId);
-        break;
-      case 'relay-ack':
-        relayReady = true;
-        onRelayOpen(srcId);
-        break;
-      case 'file-meta':
-        handleFileStart(data.name, data.size, data.mimeType, data.totalChunks);
-        break;
-      case 'file-chunk':
-        handleFileChunk(data.index, null, data.data);
-        break;
-      case 'file-end':
-        handleFileEnd();
-        break;
+    function showError(title, detail) {
+      show(`
+        <div class="icon error-icon">⚠️</div>
+        <h1>${title}</h1>
+        <div class="error-msg">${detail}</div>
+        <p class="note">Ask the other driver to tap "Generate QR Code" again to create a fresh link.</p>
+        <div class="get-app">Don't have the app? Search for <strong>AccidentApp</strong> on the App Store or Google Play.</div>
+      `);
     }
-  };
 
-  function activateStage3() {
-    if (relayMode) return;
-    clearStageTimer();
-    currentStage = 3;
-    relayMode  = true;
-    relayReady = false;
-    relayPeerId = RECEIVE_MODE ? _autoConnectPeer : (conn ? conn.peer : null);
-    updateStageStatus();
-    relaySend({ type: 'relay-hello' });
-    // Stage 4 fallback if relay doesn't connect in time
-    if (TURN_ENABLED) {
-      stageTimer = setTimeout(activateStage4, RELAY_TIMEOUT_MS);
-    } else {
-      stageTimer = setTimeout(() => {
-        if (!relayReady) {
-          if (RECEIVE_MODE) {
-            recvShowError('כל שלבי ההתחברות נכשלו.\nוודא שהאפליקציה פתוחה ומחוברת לאינטרנט, ונסה שנית.');
-          } else {
-            showNatBanner();
-            addSystemMessage('✗ All connection stages failed');
-          }
-        }
-      }, RELAY_TIMEOUT_MS);
+    // ─── AES-256-GCM DECRYPT ──────────────────────────────────────────────────
+    // Uses the Web Crypto API — no external library needed in modern browsers.
+    // Format: [12 bytes IV | ciphertext + 16 bytes auth tag]
+
+    function base64urlToBytes(b64url) {
+      // Convert base64url → standard base64 → binary
+      const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = b64.padEnd(b64.length + (4 - b64.length % 4) % 4, '=');
+      const binary = atob(padded);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
     }
-  }
 
-  // ── STAGE 4: TURN RELAY ─────────────────────────────────────
-  function activateStage4() {
-    clearStageTimer();
-    currentStage = 4;
-    updateStageStatus();
-    const senderPeerId = RECEIVE_MODE ? _autoConnectPeer
-                       : (conn ? conn.peer : document.getElementById('peer-id-input').value.trim());
-    relayMode  = false;
-    relayReady = false;
-    if (peer) { peer.destroy(); peer = null; }
-    initPeerWithConfig(
-      [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: TURN_URLS, username: TURN_USER, credential: TURN_CRED }
-      ],
-      () => {
-        relayPeerId = senderPeerId;
-        document.getElementById('peer-id-input').value = senderPeerId;
-        doConnect(senderPeerId);
-      }
-    );
-  }
+    async function decryptBlob(encryptedBytes, keyBytes) {
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']
+      );
+      const iv = encryptedBytes.slice(0, 12);
+      const ciphertext = encryptedBytes.slice(12);
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        cryptoKey,
+        ciphertext
+      );
+      return new Uint8Array(decrypted);
+    }
 
-  // ── PEERJS INIT ────────────────────────────────────────────
-  function initPeerWithConfig(iceServers, onReadyCallback) {
-    peer = new Peer(undefined, {
-      host: '0.peerjs.com',
-      port: 443,
-      secure: true,
-      debug: 0,
-      config: { iceServers }
-    });
+    // ─── MAIN ─────────────────────────────────────────────────────────────────
 
-    peer.on('open', (id) => {
-      myId = id;
-      interceptRelayMessages();
-      if (!RECEIVE_MODE) {
-        myIdEl.textContent = id;
-        dot.className = 'dot online';
-        statusText.textContent = 'Ready — waiting for connection';
-        connectBtn.disabled = false;
-      }
-      if (onReadyCallback) onReadyCallback(id);
-    });
+    async function main() {
+      // Parse #s=<sessionId>&k=<keyBase64url> from URL fragment
+      const hash = location.hash.slice(1); // remove leading '#'
+      const params = new URLSearchParams(hash);
+      const sessionId = params.get('s');
+      const keyB64url = params.get('k');
 
-    peer.on('error', (err) => {
-      clearStageTimer();
-      if (RECEIVE_MODE) {
-        if (err.type === 'peer-unavailable' && currentStage < 3) {
-          activateStage3();
-        } else {
-          recvShowError('שגיאת חיבור: ' + err.type + '\nוודא שהאפליקציה של השולח עדיין פתוחה ומציגה את קוד ה-QR.');
-        }
+      if (!sessionId || !keyB64url) {
+        showError(
+          'Invalid Link',
+          'This link is missing required information. Make sure you scanned the full QR code.'
+        );
         return;
       }
-      dot.className = 'dot';
-      if (err.type === 'peer-unavailable') {
-        statusText.textContent = 'Peer not found — check the ID and try again';
-        connectBtn.disabled = false;
-        addSystemMessage('✗ Peer ID not found — make sure the other device has the app open');
-      } else if (err.type === 'network' || err.type === 'server-error') {
-        showNatBanner();
-      } else {
-        statusText.textContent = 'Error: ' + err.type;
-      }
-    });
 
-    peer.on('connection', (c) => {
-      hideNatBanner();
-      conn = c;
-      setupConnection();
-      if (!RECEIVE_MODE) addSystemMessage('Incoming connection from ' + conn.peer.substring(0, 8) + '...');
-    });
-  }
+      showLoading('Fetching your document…');
 
-
-  // -- Import E2EE key from URL if present --
-  const _e2eeKeyParam = _urlParams.get('key');
-  if (_e2eeKeyParam) {
-    e2eeImportKey(_e2eeKeyParam).catch(err => console.warn('E2EE key import failed:', err));
-  }
-
-  // Stage 1+2: STUN (WebRTC tries direct host candidates first automatically)
-  initPeerWithConfig(
-    [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' }
-    ],
-    () => {
-      if (RECEIVE_MODE) {
-        currentStage = 2;
-        relayPeerId  = _autoConnectPeer;
-        updateStageStatus();
-        document.getElementById('peer-id-input').value = _autoConnectPeer;
-        setTimeout(() => doConnect(_autoConnectPeer), 600);
-      }
-    }
-  );
-
-  // ── CONNECT ────────────────────────────────────────────────
-  function doConnect(peerId) {
-    if (!peerId || !peer || peer.destroyed) return;
-    conn = peer.connect(peerId, { reliable: true });
-    setupConnection();
-    // ICE timeout → Stage 3 relay
-    clearStageTimer();
-    stageTimer = setTimeout(() => {
-      if (conn && !conn.open && !relayMode) activateStage3();
-    }, ICE_TIMEOUT_MS);
-    tryAttachEarlyIceWatcher();
-  }
-
-  function connectToPeer() {
-    const peerId = document.getElementById('peer-id-input').value.trim();
-    if (!peerId) return;
-    hideNatBanner();
-    if (!RECEIVE_MODE) {
-      currentStage = 2;
-      dot.className = 'dot connecting';
-      dot.style.background = '';
-      dot.style.boxShadow = '';
-      statusText.textContent = 'Connecting to peer...';
-      connectBtn.disabled = true;
-    }
-    relayPeerId = peerId;
-    doConnect(peerId);
-  }
-
-  // ── CONNECTION EVENTS ──────────────────────────────────────
-  function setupConnection() {
-    conn.on('open', () => {
-      clearStageTimer();
-      hideNatBanner();
-      if (RECEIVE_MODE) {
-        recvSetStatus('מחובר · ממתין לקובץ...', 'connected');
-      } else {
-        dot.className = 'dot online';
-        dot.style.background = '';
-        dot.style.boxShadow = '';
-        statusText.textContent = 'Connected to ' + conn.peer.substring(0, 8) + '...';
-        msgInput.disabled = false;
-        sendBtn.disabled = false;
-        attachBtn.disabled = false;
-        connectBtn.disabled = true;
-        clearEmptyState();
-        addSystemMessage('✓ Stage ' + currentStage + ' connection established');
-        watchIceState();
-      }
-    });
-
-    conn.on('data', handleIncomingData);
-
-    conn.on('close', () => {
-      clearStageTimer();
-      if (RECEIVE_MODE) return;
-      dot.className = 'dot';
-      dot.style.background = '';
-      dot.style.boxShadow = '';
-      statusText.textContent = 'Connection closed';
-      msgInput.disabled = true;
-      sendBtn.disabled = true;
-      attachBtn.disabled = true;
-      connectBtn.disabled = false;
-      addSystemMessage('— Connection closed');
-    });
-
-    conn.on('error', () => {
-      if (!relayMode) activateStage3();
-    });
-  }
-
-  // ── ICE WATCHER ────────────────────────────────────────────
-  function watchIceState() {
-    const rtc = conn && conn.peerConnection;
-    if (!rtc) return;
-    rtc.oniceconnectionstatechange = () => {
-      const s = rtc.iceConnectionState;
-      if (s === 'failed') {
-        clearStageTimer();
-        if (RECEIVE_MODE) {
-          activateStage3();
-        } else {
-          showNatBanner();
-          addSystemMessage('✗ ICE failed — trying relay (Stage 3)');
-        }
-      } else if (s === 'disconnected' && conn && conn.open) {
-        if (!RECEIVE_MODE) addSystemMessage('⚠ Connection interrupted');
-      }
-    };
-  }
-
-  function tryAttachEarlyIceWatcher() {
-    const iv = setInterval(() => {
-      if (conn && conn.peerConnection) {
-        const rtc = conn.peerConnection;
-        rtc.oniceconnectionstatechange = () => {
-          if (rtc.iceConnectionState === 'failed') {
-            clearStageTimer();
-            clearInterval(iv);
-            if (RECEIVE_MODE) {
-              activateStage3();
-            } else {
-              showNatBanner();
-              addSystemMessage('✗ ICE failed — trying relay (Stage 3)');
-            }
-          }
-        };
-        clearInterval(iv);
-      }
-    }, 200);
-    setTimeout(() => clearInterval(iv), ICE_TIMEOUT_MS + 2000);
-  }
-
-  // ── INCOMING DATA (direct P2P path) ────────────────────────
-  function handleIncomingData(data) {
-    if (typeof data === 'string') {
-      if (!RECEIVE_MODE) addMessage(data, 'recv');
-      return;
-    }
-    if (!data || !data.type) return;
-
-    // Support both old protocol (file-start) and new (file-meta)
-    if (data.type === 'file-meta' || data.type === 'file-start') {
-      handleFileStart(
-        data.name,
-        data.size,
-        data.mimeType || data.fileType,
-        data.totalChunks || 0,
-        data.msgEl
-      );
-      return;
-    }
-    if (data.type === 'file-chunk' && incomingFile) {
-      // direct mode: data.chunk is ArrayBuffer
-      handleFileChunk(data.index != null ? data.index : null, data.chunk, null);
-      return;
-    }
-    if (data.type === 'file-end' && incomingFile) {
-      handleFileEnd();
-    }
-  }
-
-  // ── FILE ASSEMBLY (shared by direct + relay paths) ─────────
-  function handleFileStart(name, size, mimeType, totalChunks) {
-    incomingFile = { name, size, mimeType, totalChunks, chunks: {}, received: 0, msgEl: null };
-    if (RECEIVE_MODE) {
-      recvSetStatus('מקבל קובץ...', 'connected');
-      recvShowFileInfo(name, size);
-    } else {
-      incomingFile.msgEl = addFileMessage('recv', name, size);
-    }
-  }
-
-  function handleFileChunk(index, arrayBuf, base64) {
-    if (!incomingFile) return;
-    const key = (index != null) ? index : Object.keys(incomingFile.chunks).length;
-    // Decrypt if E2EE key is present
-    if (_e2eeKey && (arrayBuf !== null)) {
-      e2eeDecryptAB(arrayBuf).then(plain => {
-        incomingFile.chunks[key] = plain;
-        incomingFile.received += plain.byteLength;
-        _updateChunkProgress(key);
-      }).catch(err => console.error('E2EE decrypt error (direct):', err));
-    } else if (_e2eeKey && base64 !== null) {
-      const rawEncArr = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-      e2eeDecryptAB(rawEncArr.buffer).then(plain => {
-        incomingFile.chunks[key] = plain;
-        incomingFile.received += plain.byteLength;
-        _updateChunkProgress(key);
-      }).catch(err => console.error('E2EE decrypt error (relay):', err));
-    } else {
-      incomingFile.chunks[key] = arrayBuf !== null ? arrayBuf : base64;
-      if (arrayBuf !== null) incomingFile.received += arrayBuf.byteLength;
-      _updateChunkProgress(key);
-    }
-  }
-
-  function _updateChunkProgress(key) {
-    if (!incomingFile) return;
-    const received = Object.keys(incomingFile.chunks).length;
-    const total    = incomingFile.totalChunks || 1;
-    const pct      = Math.min(99, Math.round((received / total) * 100));
-    if (RECEIVE_MODE) {
-      recvSetProgress(pct);
-    } else {
-      updateProgress(incomingFile.msgEl, pct);
-    }
-  }
-
-  function handleFileEnd() {
-    if (!incomingFile) return;
-    const total   = incomingFile.totalChunks;
-    const ordered = Array.from({ length: total }, (_, i) => incomingFile.chunks[i]);
-    const mimeType = incomingFile.mimeType || 'application/octet-stream';
-    const name     = incomingFile.name;
-    const msgEl    = incomingFile.msgEl;
-    incomingFile   = null;
-
-    // Detect format: base64 strings (relay) vs ArrayBuffers (direct)
-    let blob;
-    if (typeof ordered[0] === 'string') {
-      const bin   = atob(ordered.join(''));
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      blob = new Blob([bytes], { type: mimeType });
-    } else {
-      blob = new Blob(ordered.filter(Boolean), { type: mimeType });
-    }
-
-    const url = URL.createObjectURL(blob);
-    if (RECEIVE_MODE) {
-      recvShowDownload(url, name);
-      // Acknowledge receipt so the sender knows the file arrived
+      // 1. Fetch encrypted blob from server
+      let encryptedBytes;
       try {
-        if (relayMode && relayPeerId) {
-          relaySend({ type: 'transfer-complete' });
-        } else if (conn && conn.open) {
-          conn.send({ type: 'transfer-complete' });
+        const res = await fetch(`${SERVER_URL}/file/${encodeURIComponent(sessionId)}`, {
+          headers: { 'Accept': 'application/octet-stream' },
+        });
+
+        if (res.status === 404) {
+          showError(
+            'Link Expired',
+            'This insurance information file has expired (links are valid for 15 minutes) or was already deleted by the sender.'
+          );
+          return;
         }
-      } catch (_e) {}
-    } else {
-      finalizeReceivedFile(msgEl, url, name);
-      addSystemMessage('✓ File received: ' + name);
-    }
-  }
 
-  // ── SEND TEXT ──────────────────────────────────────────────
-  function sendMessage() {
-    const text = msgInput.value.trim();
-    if (!text || !conn || !conn.open) return;
-    conn.send(text);
-    addMessage(text, 'sent');
-    msgInput.value = '';
-    msgInput.focus();
-  }
+        if (!res.ok) {
+          throw new Error(`Server error: ${res.status}`);
+        }
 
-  // ── SEND FILE ──────────────────────────────────────────────
-  function sendFile(file) {
-    if (!file || !conn || !conn.open) return;
-    fileInput.value = '';
-    conn.send({ type: 'file-start', name: file.name, size: file.size, fileType: file.type });
-    const msgEl = addFileMessage('sent', file.name, file.size);
-    let offset = 0;
-    const reader = new FileReader();
-    function readNext() {
-      const slice = file.slice(offset, offset + CHUNK_SIZE);
-      reader.readAsArrayBuffer(slice);
-    }
-    reader.onload = (e) => {
-      conn.send({ type: 'file-chunk', chunk: e.target.result });
-      offset += e.target.result.byteLength;
-      updateProgress(msgEl, Math.round((offset / file.size) * 100));
-      if (offset < file.size) {
-        setTimeout(readNext, 10);
-      } else {
-        conn.send({ type: 'file-end' });
-        finalizeSentFile(msgEl);
-        addSystemMessage('✓ File sent: ' + file.name);
+        const buffer = await res.arrayBuffer();
+        encryptedBytes = new Uint8Array(buffer);
+      } catch (err) {
+        showError(
+          'Download Failed',
+          'Could not reach the server. Please check your internet connection and try again.'
+        );
+        return;
       }
-    };
-    readNext();
-  }
 
-  // ── FILE MESSAGE UI (messenger mode) ──────────────────────
-  function fileEmoji(name) {
-    const ext = (name.split('.').pop() || '').toLowerCase();
-    const map = {
-      pdf:'📄', doc:'📝', docx:'📝', xls:'📊', xlsx:'📊', ppt:'📋', pptx:'📋',
-      zip:'🗜️', rar:'🗜️', gz:'🗜️', '7z':'🗜️',
-      jpg:'🖼️', jpeg:'🖼️', png:'🖼️', gif:'🖼️', webp:'🖼️', svg:'🖼️', bmp:'🖼️',
-      mp4:'🎬', mov:'🎬', avi:'🎬', mkv:'🎬', webm:'🎬',
-      mp3:'🎵', wav:'🎵', ogg:'🎵', flac:'🎵', aac:'🎵',
-      txt:'📃', md:'📃', json:'📃', csv:'📃', xml:'📃',
-      js:'💻', ts:'💻', py:'💻', html:'💻', css:'💻', java:'💻', cpp:'💻'
-    };
-    return map[ext] || '📁';
-  }
+      showLoading('Decrypting document…');
 
-  function fmtBytes(b) {
-    if (b < 1024) return b + ' B';
-    if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
-    return (b/1048576).toFixed(1) + ' MB';
-  }
+      // 2. Decrypt — happens entirely in this browser, key never leaves device
+      let pdfBytes;
+      try {
+        const keyBytes = base64urlToBytes(keyB64url);
+        pdfBytes = await decryptBlob(encryptedBytes, keyBytes);
+      } catch (err) {
+        showError(
+          'Decryption Failed',
+          'The document could not be decrypted. The QR code may have been corrupted or tampered with.'
+        );
+        return;
+      }
 
-  function addFileMessage(direction, name, size) {
-    clearEmptyState();
-    const time = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
-    const metaLabel = direction === 'sent' ? 'you · ' + time : 'peer · ' + time;
-    const div = document.createElement('div');
-    div.className = `msg file-msg ${direction}`;
-    div.innerHTML = `
-      <div class="meta">${metaLabel}</div>
-      <div class="file-bubble">
-        <div class="file-icon">${fileEmoji(name)}</div>
-        <div class="file-info">
-          <div class="file-name" title="${esc(name)}">${esc(name)}</div>
-          <div class="file-size">${fmtBytes(size)}</div>
+      // 3. Trigger download
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'insurance-info.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      // 4. Show success state with manual download button as fallback
+      show(`
+        <div class="icon success-icon">✅</div>
+        <h1>Download Complete</h1>
+        <p class="subtitle">The insurance information PDF has been downloaded to your device.</p>
+        <a href="${url}" download="insurance-info.pdf" class="btn">
+          Download Again
+        </a>
+        <p class="note">
+          This link is valid for 15 minutes from when it was created.<br/>
+          The document is encrypted end-to-end — only you can read it.
+        </p>
+        <div class="get-app">
+          Involved in an accident too? Get the app to instantly share your own info.<br/>
+          Search <strong>AccidentApp</strong> on the App Store or Google Play.
         </div>
-        <button class="dl-btn" disabled style="opacity:0.35">
-          ${direction === 'recv' ? '↓ Save' : '...'}
-        </button>
-      </div>
-      <div class="progress-wrap"><div class="progress-bar"></div></div>
-      <div class="progress-label">0%</div>
-    `;
-    messagesEl.appendChild(div);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-    return div;
-  }
-
-  function updateProgress(msgEl, pct) {
-    if (!msgEl) return;
-    const bar   = msgEl.querySelector('.progress-bar');
-    const label = msgEl.querySelector('.progress-label');
-    if (bar)   bar.style.width = pct + '%';
-    if (label) label.textContent = pct + '%';
-  }
-
-  function finalizeReceivedFile(msgEl, url, name) {
-    if (!msgEl) return;
-    updateProgress(msgEl, 100);
-    msgEl.querySelector('.progress-label').textContent = '100% — complete';
-    const btn = msgEl.querySelector('.dl-btn');
-    if (btn) {
-      btn.removeAttribute('disabled');
-      btn.style.opacity = '1';
-      btn.textContent = '↓ Save';
-      btn.onclick = () => triggerDownload(url, name);
+      `);
     }
-  }
 
-  function finalizeSentFile(msgEl) {
-    if (!msgEl) return;
-    updateProgress(msgEl, 100);
-    msgEl.querySelector('.progress-label').textContent = '100% — sent';
-    const btn = msgEl.querySelector('.dl-btn');
-    if (btn) {
-      btn.replaceWith(Object.assign(document.createElement('span'), {
-        className: 'sent-badge', textContent: '✓ Sent'
-      }));
-    }
-  }
-
-  function triggerDownload(url, name) {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }
-
-  // ── TEXT MESSAGE UI ────────────────────────────────────────
-  function addMessage(text, type) {
-    clearEmptyState();
-    const time = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
-    const div = document.createElement('div');
-    div.className = 'msg ' + type;
-    div.innerHTML = `<div class="meta">${type==='sent'?'you · '+time:'peer · '+time}</div>${esc(text)}`;
-    messagesEl.appendChild(div);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
-  function addSystemMessage(text) {
-    clearEmptyState();
-    const div = document.createElement('div');
-    div.className = 'system-msg';
-    div.textContent = text;
-    messagesEl.appendChild(div);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
-  function clearEmptyState() {
-    const e = messagesEl.querySelector('.empty-state');
-    if (e) e.remove();
-  }
-
-  // ── COPY ID ────────────────────────────────────────────────
-  function copyId() {
-    if (!myId) return;
-    navigator.clipboard.writeText(myId).then(() => {
-      const btn = document.getElementById('copy-btn');
-      btn.textContent = 'copied!';
-      btn.classList.add('copied');
-      setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 2000);
+    main().catch(err => {
+      console.error(err);
+      showError('Unexpected Error', 'Something went wrong. Please try scanning the QR code again.');
     });
-  }
-
-  function esc(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-</script>
+  </script>
 </body>
 </html>
