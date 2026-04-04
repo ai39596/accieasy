@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>פרטי ביטוח — AcciEasy</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -197,11 +198,7 @@
       line-height: 1.6;
     }
 
-    @media print {
-      body { background: #fff; padding: 0; }
-      .print-btn, .get-app { display: none; }
-      .section-card { box-shadow: none; border: 1px solid #ccc; }
-    }
+    .print-btn:disabled { opacity: 0.6; cursor: default; }
   </style>
 </head>
 <body>
@@ -320,7 +317,7 @@
           ` : ''}
 
           <p class="timestamp">נוצר ב-${createdAt}</p>
-          <button class="print-btn" onclick="window.print()">🖨 הדפס / שמור כ-PDF</button>
+          <button class="print-btn" id="download-btn">⬇ הורד PDF</button>
           <div class="get-app">
             גם אתה נפגעת בתאונה? הורד את AcciEasy ושתף את הפרטים שלך בשניות.
           </div>
@@ -395,6 +392,26 @@
 
       if (parsed && parsed.version === 1) {
         renderInsuranceCard(parsed);
+        document.getElementById('download-btn').addEventListener('click', () => {
+          const el = document.querySelector('.details-wrap');
+          const btn = document.getElementById('download-btn');
+          btn.textContent = 'יוצר PDF…';
+          btn.disabled = true;
+          html2pdf()
+            .set({
+              margin: 10,
+              filename: 'accieasy-insurance.pdf',
+              image: { type: 'jpeg', quality: 0.97 },
+              html2canvas: { scale: 2, useCORS: true, logging: false },
+              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            })
+            .from(el)
+            .save()
+            .then(() => {
+              btn.textContent = '⬇ הורד PDF';
+              btn.disabled = false;
+            });
+        });
       } else {
         // Legacy PDF fallback — trigger download
         const blob = new Blob([decryptedBytes], { type: 'application/pdf' });
