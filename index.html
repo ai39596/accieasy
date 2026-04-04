@@ -1,23 +1,22 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Download Insurance Information</title>
+  <title>פרטי ביטוח — AcciEasy</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
       background: #f0f4f8;
       min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
+      padding: 24px 16px;
+      direction: rtl;
     }
 
-    .card {
+    /* ── Status card (loading / error) ── */
+    .status-card {
       background: #fff;
       border-radius: 16px;
       padding: 40px 32px;
@@ -25,14 +24,12 @@
       width: 100%;
       text-align: center;
       box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      margin: 60px auto 0;
     }
 
-    .icon {
-      font-size: 56px;
-      margin-bottom: 16px;
-    }
+    .icon { font-size: 56px; margin-bottom: 16px; }
 
-    h1 {
+    .status-card h1 {
       font-size: 22px;
       font-weight: 700;
       color: #1a1a2e;
@@ -42,55 +39,19 @@
     .subtitle {
       color: #64748b;
       font-size: 15px;
-      margin-bottom: 32px;
-      line-height: 1.5;
+      margin-bottom: 24px;
+      line-height: 1.6;
     }
-
-    .btn {
-      display: inline-block;
-      background: #2563eb;
-      color: #fff;
-      padding: 14px 32px;
-      border-radius: 10px;
-      font-size: 16px;
-      font-weight: 600;
-      text-decoration: none;
-      border: none;
-      cursor: pointer;
-      width: 100%;
-      transition: background 0.2s;
-    }
-
-    .btn:hover { background: #1d4ed8; }
-    .btn:disabled { background: #94a3b8; cursor: not-allowed; }
 
     .spinner {
-      width: 40px;
-      height: 40px;
+      width: 40px; height: 40px;
       border: 4px solid #e2e8f0;
       border-top-color: #2563eb;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin: 0 auto 20px;
     }
-
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    .status-text {
-      color: #475569;
-      font-size: 15px;
-      margin-top: 12px;
-    }
-
-    .note {
-      color: #94a3b8;
-      font-size: 13px;
-      margin-top: 20px;
-      line-height: 1.5;
-    }
-
-    .error-icon { color: #ef4444; }
-    .success-icon { color: #22c55e; }
 
     .error-msg {
       background: #fef2f2;
@@ -100,60 +61,273 @@
       color: #dc2626;
       font-size: 14px;
       margin-bottom: 20px;
-      line-height: 1.5;
+      line-height: 1.6;
+      text-align: right;
+    }
+
+    .note { color: #94a3b8; font-size: 13px; margin-top: 20px; line-height: 1.6; }
+
+    /* ── Insurance details card ── */
+    .details-wrap {
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .page-header h1 {
+      font-size: 22px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+
+    .page-header .logo {
+      font-size: 22px;
+      font-weight: 800;
+      color: #2563eb;
+    }
+
+    .section-card {
+      background: #fff;
+      border-radius: 14px;
+      border: 1px solid #e2e8f0;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 14px;
+    }
+
+    .field-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 7px 0;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .field-row:last-child { border-bottom: none; }
+
+    .field-label {
+      font-size: 13px;
+      color: #64748b;
+      flex-shrink: 0;
+      margin-left: 12px;
+    }
+
+    .field-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: #0f172a;
+      text-align: right;
+    }
+
+    .photo-block { margin-top: 14px; }
+
+    .photo-label {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-bottom: 6px;
+    }
+
+    .doc-photo {
+      width: 100%;
+      max-width: 360px;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+      display: block;
+    }
+
+    .policy-row {
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+    }
+    .policy-row:last-child { margin-bottom: 0; }
+
+    .policy-type {
+      font-size: 13px;
+      font-weight: 700;
+      color: #2563eb;
+      margin-bottom: 6px;
+    }
+
+    .print-btn {
+      display: block;
+      width: 100%;
+      max-width: 300px;
+      margin: 24px auto 0;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 0;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+    }
+    .print-btn:hover { background: #1d4ed8; }
+
+    .timestamp {
+      text-align: center;
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 12px;
+      margin-bottom: 4px;
     }
 
     .get-app {
-      margin-top: 24px;
-      padding-top: 24px;
-      border-top: 1px solid #e2e8f0;
-      color: #64748b;
+      text-align: center;
       font-size: 13px;
+      color: #94a3b8;
+      margin-top: 20px;
+      line-height: 1.6;
+    }
+
+    @media print {
+      body { background: #fff; padding: 0; }
+      .print-btn, .get-app { display: none; }
+      .section-card { box-shadow: none; border: 1px solid #ccc; }
     }
   </style>
 </head>
 <body>
-  <div class="card" id="card">
-    <!-- Content injected by JS -->
-  </div>
+  <div id="root"></div>
 
   <script type="module">
-    // ─── CONFIGURATION ────────────────────────────────────────────────────────
-    // Update this to your deployed Render server URL
     const SERVER_URL = 'https://accieasy-server-q43x.onrender.com';
-    // ──────────────────────────────────────────────────────────────────────────
 
-    const card = document.getElementById('card');
+    const root = document.getElementById('root');
 
-    function show(html) {
-      card.innerHTML = html;
+    function showStatus(html) {
+      root.innerHTML = `<div class="status-card">${html}</div>`;
     }
 
     function showLoading(text) {
-      show(`
+      showStatus(`
         <div class="icon">🔒</div>
-        <h1>Insurance Information</h1>
+        <h1>AcciEasy</h1>
         <div class="spinner"></div>
-        <p class="status-text">${text}</p>
+        <p class="subtitle">${text}</p>
       `);
     }
 
     function showError(title, detail) {
-      show(`
-        <div class="icon error-icon">⚠️</div>
+      showStatus(`
+        <div class="icon">⚠️</div>
         <h1>${title}</h1>
         <div class="error-msg">${detail}</div>
-        <p class="note">Ask the other driver to tap "Generate QR Code" again to create a fresh link.</p>
-        <div class="get-app">Don't have the app? Search for <strong>AccidentApp</strong> on the App Store or Google Play.</div>
+        <p class="note">בקש מהנהג האחר ליצור קוד QR חדש.</p>
       `);
     }
 
-    // ─── AES-256-GCM DECRYPT ──────────────────────────────────────────────────
-    // Uses the Web Crypto API — no external library needed in modern browsers.
-    // Format: [12 bytes IV | ciphertext + 16 bytes auth tag]
+    function field(label, value) {
+      if (!value) return '';
+      return `
+        <div class="field-row">
+          <span class="field-label">${label}</span>
+          <span class="field-value">${value}</span>
+        </div>`;
+    }
+
+    function policyTypeLabel(type) {
+      return type === 'mandatory' ? 'חובה' : type === 'comprehensive' ? 'מקיף' : 'צד שלישי';
+    }
+
+    function photoBlock(label, base64) {
+      if (!base64) return '';
+      return `
+        <div class="photo-block">
+          <div class="photo-label">${label}</div>
+          <img class="doc-photo" src="data:image/jpeg;base64,${base64}" alt="${label}" />
+        </div>`;
+    }
+
+    function renderInsuranceCard(data) {
+      const d = data.driver;
+      const a = data.agent;
+      const v = data.vehicle;
+
+      const createdAt = new Date(data.createdAt).toLocaleString('he-IL');
+
+      const policiesHtml = (v?.insurancePolicies ?? []).map(p => `
+        <div class="policy-row">
+          <div class="policy-type">${policyTypeLabel(p.type)}</div>
+          ${field('חברת ביטוח', p.companyName)}
+          ${field('מספר פוליסה', p.policyNumber)}
+          ${field('שם המבוטח', p.policyholderName)}
+          ${field('כתובת המבוטח', p.policyholderAddress)}
+        </div>`).join('');
+
+      root.innerHTML = `
+        <div class="details-wrap">
+          <div class="page-header">
+            <span class="logo">AcciEasy</span>
+            <h1>פרטי ביטוח</h1>
+          </div>
+
+          <!-- Driver -->
+          <div class="section-card">
+            <div class="section-title">פרטי הנהג</div>
+            ${field('שם מלא', d.fullName)}
+            ${field('תעודת זהות', d.idNumber)}
+            ${field('שנת לידה', d.yearOfBirth)}
+            ${field('כתובת', d.address)}
+            ${field('טלפון', d.phoneNumber)}
+            ${photoBlock('רישיון נהיגה', d.licensePhotoBase64)}
+          </div>
+
+          <!-- Agent -->
+          <div class="section-card">
+            <div class="section-title">פרטי סוכן הביטוח</div>
+            ${field('שם הסוכן', a.agentName)}
+            ${field('טלפון', a.agentPhone)}
+            ${field('כתובת', a.agentAddress)}
+          </div>
+
+          ${v ? `
+          <!-- Vehicle -->
+          <div class="section-card">
+            <div class="section-title">פרטי הרכב</div>
+            ${field('יצרן', v.make)}
+            ${field('דגם', v.model)}
+            ${field('מספר רישוי', v.licensePlate)}
+            ${field('צבע', v.color)}
+            ${field('שם הבעלים', v.ownerName)}
+            ${field('כתובת הבעלים', v.ownerAddress)}
+            ${photoBlock('רישיון רכב', v.carLicencePhotoBase64)}
+          </div>
+
+          <!-- Insurance policies -->
+          ${policiesHtml ? `
+          <div class="section-card">
+            <div class="section-title">פוליסות ביטוח</div>
+            ${policiesHtml}
+          </div>` : ''}
+          ` : ''}
+
+          <p class="timestamp">נוצר ב-${createdAt}</p>
+          <button class="print-btn" onclick="window.print()">🖨 הדפס / שמור כ-PDF</button>
+          <div class="get-app">
+            גם אתה נפגעת בתאונה? הורד את AcciEasy ושתף את הפרטים שלך בשניות.
+          </div>
+        </div>`;
+    }
 
     function base64urlToBytes(b64url) {
-      // Convert base64url → standard base64 → binary
       const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
       const padded = b64.padEnd(b64.length + (4 - b64.length % 4) % 4, '=');
       const binary = atob(padded);
@@ -169,108 +343,76 @@
       const iv = encryptedBytes.slice(0, 12);
       const ciphertext = encryptedBytes.slice(12);
       const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
-        cryptoKey,
-        ciphertext
+        { name: 'AES-GCM', iv }, cryptoKey, ciphertext
       );
       return new Uint8Array(decrypted);
     }
 
-    // ─── MAIN ─────────────────────────────────────────────────────────────────
-
     async function main() {
-      // Parse #s=<sessionId>&k=<keyBase64url> from URL fragment
-      const hash = location.hash.slice(1); // remove leading '#'
+      const hash = location.hash.slice(1);
       const params = new URLSearchParams(hash);
       const sessionId = params.get('s');
       const keyB64url = params.get('k');
 
       if (!sessionId || !keyB64url) {
-        showError(
-          'Invalid Link',
-          'This link is missing required information. Make sure you scanned the full QR code.'
-        );
+        showError('קישור לא תקין', 'הקישור חסר מידע. ודא שסרקת את כל קוד ה-QR.');
         return;
       }
 
-      showLoading('Fetching your document…');
+      showLoading('מוריד את המסמך…');
 
-      // 1. Fetch encrypted blob from server
       let encryptedBytes;
       try {
         const res = await fetch(`${SERVER_URL}/file/${encodeURIComponent(sessionId)}`, {
           headers: { 'Accept': 'application/octet-stream' },
         });
-
         if (res.status === 404) {
-          showError(
-            'Link Expired',
-            'This insurance information file has expired (links are valid for 15 minutes) or was already deleted by the sender.'
-          );
+          showError('הקישור פג תוקף', 'הקישור פג תוקף (תוקף של 15 דקות) או נמחק על ידי השולח.');
           return;
         }
-
-        if (!res.ok) {
-          throw new Error(`Server error: ${res.status}`);
-        }
-
-        const buffer = await res.arrayBuffer();
-        encryptedBytes = new Uint8Array(buffer);
-      } catch (err) {
-        showError(
-          'Download Failed',
-          'Could not reach the server. Please check your internet connection and try again.'
-        );
+        if (!res.ok) throw new Error(`Server error: ${res.status}`);
+        encryptedBytes = new Uint8Array(await res.arrayBuffer());
+      } catch {
+        showError('הורדה נכשלה', 'לא ניתן להגיע לשרת. בדוק את החיבור לאינטרנט ונסה שוב.');
         return;
       }
 
-      showLoading('Decrypting document…');
+      showLoading('מפענח…');
 
-      // 2. Decrypt — happens entirely in this browser, key never leaves device
-      let pdfBytes;
+      let decryptedBytes;
       try {
         const keyBytes = base64urlToBytes(keyB64url);
-        pdfBytes = await decryptBlob(encryptedBytes, keyBytes);
-      } catch (err) {
-        showError(
-          'Decryption Failed',
-          'The document could not be decrypted. The QR code may have been corrupted or tampered with.'
-        );
+        decryptedBytes = await decryptBlob(encryptedBytes, keyBytes);
+      } catch {
+        showError('פענוח נכשל', 'לא ניתן לפענח את המסמך. ייתכן שקוד ה-QR פגום.');
         return;
       }
 
-      // 3. Trigger download
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'insurance-info.pdf';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      // Detect JSON (new format) vs legacy PDF
+      const text = new TextDecoder().decode(decryptedBytes);
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch {}
 
-      // 4. Show success state with manual download button as fallback
-      show(`
-        <div class="icon success-icon">✅</div>
-        <h1>Download The Pdf file</h1>
-        <p class="subtitle">Please download the PDF file to save it in your device.</p>
-        <a href="${url}" download="insurance-info.pdf" class="btn">
-          Download Again
-        </a>
-        <p class="note">
-          This link is valid for 15 minutes from when it was created.<br/>
-          The document is encrypted end-to-end — only you can read it.
-        </p>
-        <div class="get-app">
-          Involved in an accident too? Get the app to instantly share your own info.<br/>
-          Search <strong>AccidentApp</strong> on the App Store or Google Play.
-        </div>
-      `);
+      if (parsed && parsed.version === 1) {
+        renderInsuranceCard(parsed);
+      } else {
+        // Legacy PDF fallback — trigger download
+        const blob = new Blob([decryptedBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'insurance-info.pdf';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        showStatus(`
+          <div class="icon">✅</div>
+          <h1>הורדה הצליחה</h1>
+          <p class="subtitle">קובץ ה-PDF הורד למכשירך.</p>
+          <a href="${url}" download="insurance-info.pdf" class="print-btn">הורד שוב</a>
+        `);
+      }
     }
 
-    main().catch(err => {
-      console.error(err);
-      showError('Unexpected Error', 'Something went wrong. Please try scanning the QR code again.');
+    main().catch(() => {
+      showError('שגיאה בלתי צפויה', 'אירעה שגיאה. נסה לסרוק את קוד ה-QR שוב.');
     });
   </script>
 </body>
